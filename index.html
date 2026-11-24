@@ -51,6 +51,11 @@
   textarea { width: 100%; min-height: 220px; font: 15px/1.4 ui-monospace, Menlo, monospace; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
   .banner { padding: 10px 12px; border-radius: 10px; background: var(--badbg); color: var(--bad); margin-bottom: 12px; font-weight: 600; }
   .small { font-size: .85rem; color: var(--muted); } [hidden] { display: none !important; }
+  .endnote { text-align: center; color: var(--muted); font-size: .85rem; margin: -2px 0 6px; white-space: pre-line; }
+  button.model { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  .legend i.core { height: 3px; margin-top: 4px; vertical-align: 2px; background: var(--accent); }
+  canvas#ideal { height: 130px; }
+  ul.plain { padding-left: 1.1em; margin: 8px 0; } ul.plain li { margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -62,7 +67,9 @@
   <div class="card" id="trainCard">
     <div class="word" id="word">…</div>
     <div class="hint" id="hint"></div>
+    <div class="endnote" id="endnote"></div>
     <div class="micwrap">
+      <button class="model" id="model" hidden>▶ Vorbild anhören</button>
       <button id="rec">● Sprechen</button>
       <div class="meter" id="meterWrap" hidden><div id="meter"></div></div>
       <div class="status" id="status"></div>
@@ -73,11 +80,25 @@
     <div class="verdict" id="verdict"></div>
     <ul class="items" id="items"></ul>
     <canvas id="plot"></canvas>
-    <div class="legend"><span><i style="background:var(--slow)"></i>gedehnt</span><span><i style="background:var(--rest)"></i>Rest des Wortes</span><span><i style="background:var(--target)"></i>Ziel für das Ende der Dehnung</span></div>
+    <div class="legend"><span><i style="background:var(--slow)"></i>gedehnt</span><span><i style="background:var(--rest)"></i>Rest des Wortes</span><span><i style="background:var(--target)"></i>Ziel für das Ende der Dehnung</span><span><i class="core"></i>Lautstärke wird nur hier bewertet</span><span id="legRef" hidden>┄ Vorbild dieses Wortes</span></div>
+    <table id="cmpTable" style="margin-top:10px"></table>
     <div class="row"><button class="btn" id="again">Nochmal</button><button class="btn primary" id="next">Weiter ▸</button></div>
-    <div class="small" id="countdown" style="margin-top:8px;text-align:center"></div>
     <details><summary>Messwerte</summary><table id="values"></table></details>
   </div>
+
+  <details class="card" id="idealCard"><summary>So soll es klingen (Beispiele)</summary>
+    <ul class="plain">
+      <li><b>Sehr leise beginnen</b> und die Stimme <b>gleichmäßig lauter</b> werden lassen. Das ist weich, nicht gepresst.</li>
+      <li>Die erste Silbe <b>etwa 1,5–3 Sekunden</b> dehnen. Jeden Laut ineinander gleiten lassen und den Mund langsam bewegen.</li>
+      <li>Bei mehrsilbigen Wörtern danach <b>normal</b> weitersprechen.</li>
+      <li>Leise Endlaute wie <b>ch, s, t, f</b> sind von Natur aus leiser. Das ist richtig und wird nicht bemängelt.</li>
+    </ul>
+    <canvas id="ideal"></canvas>
+    <p class="small">Schema nach den Beispielen deiner CD: der Anfang liegt unter der Mitte, die Lautstärke steigt um ca. 3–8 dB pro Sekunde.</p>
+    <p class="small"><b>Echte Vorbilder anhören:</b> Wähle hier einmal deine zwei CD-Dateien aus (<i>Silben mit zwei Mitlauten</i> und <i>Antwort mit einem Wort</i>). Die Beispiele werden nur auf diesem Gerät gespeichert, nichts wird hochgeladen. Danach erscheint bei passenden Wörtern der Knopf „Vorbild anhören“.</p>
+    <input type="file" id="cdFiles" accept="audio/*,.mp3,.m4a,.wav" multiple>
+    <div class="small" id="cdStatus" style="margin-top:6px"></div>
+  </details>
 
   <details class="card"><summary>Wörter bearbeiten</summary>
     <p class="small">Ein Wort pro Zeile, Silben mit <b>|</b> trennen (z. B. <b>Ber|lin</b>). Die Wörter stammen aus deinen CD-Dateien, die Schreibweise der Silben habe ich aus einer automatischen Transkription übernommen – bitte prüfen.</p>
@@ -115,13 +136,25 @@ const REFERENCE = {
   normalLen:  { label: 'normal gesprochene Silbe (s)',        v: [0.53, 0.62, 0.82] },
   normalFlux: { label: 'Klangänderung normal gesprochen (dB/s)', v: [76, 110, 144] },
   rise:       { label: 'Anstieg am Anfang (ms)',              v: [5, 45, 274] },
-  overshoot:  { label: 'Anfangsspitze (dB)',                  v: [-17, 0.8, 8] },
+  startRel:   { label: 'Anfang gegenüber der Mitte (dB)',     v: [-9.0, -4.6, 2.9] },
+  endRel:     { label: 'Ende gegenüber der Mitte (dB)',       v: [1.3, 6.0, 10.8] },
+  slope:      { label: 'Lautstärke-Anstieg (dB pro s)',       v: [2.8, 5.2, 8.1] },
 };
+
+/* ==========================================================================
+   EIGENE REFERENZ PRO WORT aus den CD-Beispielen (nur abgeleitete Zahlen, keine Tonaufnahmen):
+   slowDur = Dauer der Dehnung (s), start/end = Anfang/Ende gegenüber der Mitte (dB), slope = Lautstärke-Anstieg (dB/s),
+   curve = Lautstärkekurve (0–100 %) alle 50 ms ab 0,15 s vor Stimmbeginn
+   ========================================================================== */
+const REF_WORDS = {"fra":{"slowDur":1.79,"voiced":1.89,"start":-6.4,"end":3.8,"slope":6.4,"curve":[8,8,10,21,24,22,23,25,27,25,23,24,25,26,29,30,32,36,32,35,40,43,47,45,47,52,57,63,64,67,62,82,79,91,93,91,100,75,66,48,33,20,13,9,9,8,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"pro":{"slowDur":1.63,"voiced":1.63,"start":-5.8,"end":1.3,"slope":5.8,"curve":[9,20,22,21,29,31,28,30,30,28,35,31,31,30,43,49,50,52,56,54,51,51,58,58,76,77,82,92,93,74,84,98,74,61,65,32,19,14,9,10,8,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"krie":{"slowDur":1.79,"voiced":1.79,"start":-5.8,"end":2.8,"slope":7.2,"curve":[13,12,12,25,28,24,31,31,24,26,25,24,23,24,21,23,27,28,28,35,38,41,37,49,52,58,61,64,78,81,82,75,88,84,94,81,65,58,44,23,11,9,10,9,9,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"bla":{"slowDur":2.22,"voiced":2.33,"start":-9,"end":2.2,"slope":4.4,"curve":[19,22,22,22,24,20,23,24,21,22,26,26,25,30,35,39,49,59,63,61,73,68,69,73,76,75,69,61,65,65,64,63,68,63,59,62,67,61,73,74,81,74,80,88,100,92,92,86,64,35,20,13,9,8,9,7,9,0,0,0,0,0,0,0,0,0,0,0]},"glei":{"slowDur":2.44,"voiced":2.44,"start":-4.8,"end":5.8,"slope":5,"curve":[5,6,6,12,22,23,17,20,21,17,18,14,13,13,16,16,17,30,29,27,31,34,31,31,30,31,29,35,39,42,38,40,37,34,35,39,38,30,32,37,33,37,41,43,52,64,85,93,98,84,57,29,10,7,4,5,5,5,0,0,0,0,0,0,0,0,0,0]},"tra":{"slowDur":1.69,"voiced":1.69,"start":-6,"end":3.5,"slope":5.2,"curve":[16,20,25,25,29,32,31,32,34,37,31,35,35,43,53,61,65,48,51,63,58,57,50,54,58,62,72,83,85,88,94,98,85,85,77,55,37,21,10,11,11,9,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"frei":{"slowDur":1.94,"voiced":1.94,"start":-4.6,"end":6.9,"slope":6.9,"curve":[13,15,18,18,18,21,20,20,18,19,21,20,20,23,24,23,23,27,28,27,27,27,32,34,32,32,39,40,49,52,48,61,78,76,87,94,100,78,71,62,44,24,13,7,7,7,8,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"bru":{"slowDur":2.33,"voiced":2.33,"start":-1,"end":10.8,"slope":5.4,"curve":[6,7,6,15,20,20,18,17,17,18,16,19,20,19,19,19,20,22,26,22,22,23,19,18,19,19,20,22,19,18,20,18,23,22,21,31,33,33,41,51,48,66,78,96,93,99,92,58,56,28,9,7,7,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0]},"dra":{"slowDur":2.25,"voiced":2.25,"start":-2.3,"end":7.9,"slope":4.3,"curve":[15,16,15,17,21,24,28,32,31,33,33,33,35,31,21,17,23,23,25,25,24,22,23,26,24,28,25,31,30,32,35,42,49,48,54,58,61,66,70,71,75,90,96,88,74,65,42,26,17,11,6,6,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0]},"flo":{"slowDur":1.83,"voiced":1.83,"start":-2.6,"end":7.9,"slope":4.5,"curve":[7,6,5,14,18,24,29,30,31,30,28,30,29,28,26,29,31,30,29,18,27,27,28,28,28,26,28,34,34,39,45,54,63,78,87,100,85,58,35,22,7,6,5,6,6,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"schlie":{"slowDur":2.74,"voiced":2.74,"start":-6.3,"end":5.1,"slope":6.5,"curve":[9,14,16,19,23,23,24,22,17,16,15,13,13,14,12,13,8,8,8,22,18,20,22,20,25,26,26,26,26,28,28,31,30,27,24,25,25,25,23,33,40,43,50,42,53,52,72,69,71,78,87,97,99,93,72,70,51,39,18,9,7,7,8,8,0,0,0,0]},"gra":{"slowDur":2.44,"voiced":2.54,"start":-0.7,"end":7,"slope":4.1,"curve":[8,8,7,20,33,33,29,25,21,21,21,23,27,24,25,24,21,18,23,30,27,24,20,23,32,32,29,40,37,34,34,37,41,37,31,30,31,38,38,41,50,48,54,62,72,81,75,76,93,97,86,82,54,31,18,13,8,7,7,8,7,0,0,0,0,0,0,0]},"troll":{"slowDur":2.52,"voiced":2.52,"start":-3.9,"end":6.6,"slope":8.1,"curve":[11,12,15,18,19,17,19,15,19,17,16,15,14,14,9,7,7,8,8,8,8,16,27,24,22,22,20,19,20,20,18,25,26,28,29,26,31,36,37,35,40,54,62,58,68,70,73,85,95,89,84,64,54,23,13,9,7,7,7,7,0,0,0,0,0,0,0,0]},"berlin":{"slowDur":2.01,"voiced":2.66,"start":-2.2,"end":6,"slope":4,"curve":[1,1,1,3,2,1,2,2,14,25,23,21,9,13,23,25,23,23,22,25,27,27,29,31,30,29,28,26,29,28,29,29,29,28,28,30,32,36,36,38,41,42,44,48,43,47,40,61,93,98,98,73,55,33,29,19,5,2,1,2,1,1,1,0,0,0,0,0]},"milch":{"slowDur":1.77,"voiced":2.67,"start":2.9,"end":8.7,"slope":2.8,"curve":[1,1,1,3,49,44,45,44,43,43,44,42,40,38,38,38,38,34,33,30,29,26,27,29,30,30,31,35,38,46,58,69,86,97,92,90,83,55,12,30,34,38,25,6,3,2,1,1,2,4,3,3,2,5,3,5,3,1,1,1,1,1,0,0,0,0,0,0]},"zwei":{"slowDur":3.27,"voiced":3.27,"start":-2.3,"end":7.6,"slope":6.8,"curve":[0,0,2,4,5,5,5,3,2,3,2,2,3,5,4,1,4,3,2,11,30,33,33,30,33,34,34,30,34,32,30,30,33,35,16,3,13,31,23,17,27,28,34,26,28,29,29,35,33,31,32,32,24,29,31,30,34,37,45,54,66,83,96,88,84,79,66,36]}};
 
 /* ==========================================================================
    GRENZWERTE für die Bewertung – hier anpassen
    ========================================================================== */
 const LIMITS = {
+  WORD_LO_FACTOR: 0.7,      // Wörter mit eigenem CD-Vorbild: Mindestdauer = 70 % des Vorbilds (nie über SLOW_MIN)
+  WORD_HI_FACTOR: 1.6,      // … Höchstdauer = 160 % des Vorbilds (nie unter SLOW_MAX)
+  ABS_MIN_SEC: 1.2, ABS_MAX_SEC: 4.5,   // absolute Grenzen für wortspezifische Bereiche
   SLOW_MIN: 1.5,            // gedehnte erste Silbe mindestens so lange (s)   [CD: min 1,63]
   SLOW_MAX: 3.0,            // höchstens so lange (s)                          [CD: max 2,74]
   TOO_FAST_FRACTION: 0.5,   // unter 50 % von SLOW_MIN gilt es als „zu schnell“ (fast normales Tempo)
@@ -130,9 +163,10 @@ const LIMITS = {
   REST_FLUX_MIN: 70,        // … und mindestens so „schnell“ gesprochen (dB/s)
   REST_SYL_MAX_SEC: 0.9,    // … aber höchstens so lang pro Silbe (sonst „Zeitlupe“)
   BREAK_FAIL_SEC: 0.5,      // Stille mitten im Wort ab so vielen Sekunden = abgesetzt
-  OVERSHOOT_HARD_DB: 9,     // Anfang so viel lauter als der Rest = harter Einsatz  [CD: max 8]
-  RISE_SOFT_SEC: 0.04,      // ab so viel Anstiegszeit wird „weicher Einsatz“ gelobt
-  AUTO_NEXT_SEC: 3,         // nach Erfolg so lange warten, dann nächstes Wort
+  START_HARD_DB: 7,         // Anfang so viel lauter als die Mitte = gepresst/hart    [CD: größter Wert +3]
+  END_FADE_DB: -3,          // Ende so viel leiser als die Mitte …                       [CD: kleinster Wert +1]
+  SLOPE_FADE: -2,           // … und die Lautstärke fällt insgesamt um mehr als so viele dB pro Sekunde  [CD: kleinster Wert +2,8]
+  SLOPE_RISING: 1.5,        // ab so viel Anstieg pro Sekunde wird „steigt sanft an“ gelobt
 };
 
 /* ==========================================================================
@@ -141,6 +175,7 @@ const LIMITS = {
 const SETTINGS = {
   MIN_SNR_DB: 12, ONSET_ABOVE_FLOOR_DB: 8, ONSET_HOLD_SEC: 0.05, BAND_MIN_SNR: 4,
   BREAK_SEC: 0.2, BREAK_ABOVE_FLOOR_DB: 3,
+  PITCH_MIN_HZ: 70, PITCH_MAX_HZ: 400, VOICED_MIN_R: 0.55, VOICED_GAP_SEC: 0.06, VOICED_MIN_SEC: 0.5, PROFILE_TRIM_DB: 15,
   FLUX_SPAN_SEC: 0.04, FLUX_MEDIAN_SEC: 0.4, FLUX_GAP_SEC: 0.25, SLOW_FLUX_MAX: 85, SLOW_RUN_MIN_SEC: 0.4, SLOW_RUN_LONG_SEC: 0.6,
   RISE_LOW: 0.10, RISE_HIGH: 0.90, ATTACK_WINDOW_SEC: 0.5,
 };
@@ -199,6 +234,23 @@ function noiseProfile(fr, mask) {
   return Array.from(out);
 }
 function median(a) { if (!a.length) return 0; const s = Float32Array.from(a).sort(); return s[s.length >> 1]; }
+
+
+// stimmhafte Rahmen (Selbstähnlichkeit im Grundtonbereich): Vokale, m, n, l … = ja; ch, s, sch, f, Verschlusslaute = nein
+function voicedFlags(x, fr, env, floorDb, S) {
+  const n = fr.n, hop = fr.hop, lagMin = Math.floor(fr.sr / S.PITCH_MAX_HZ), lagMax = Math.ceil(fr.sr / S.PITCH_MIN_HZ), W = FRAME_N - lagMax, v = new Uint8Array(n);
+  for (let i = 0; i < n; i += 2) {
+    if (env[i] < floorDb + S.ONSET_ABOVE_FLOOR_DB) continue;
+    const o = i * hop; let e0 = 0; for (let k = 0; k < W; k++) e0 += x[o + k] * x[o + k];
+    let best = 0;
+    for (let lag = lagMin; lag <= lagMax; lag++) {
+      let c = 0, e1 = 0; for (let k = 0; k < W; k++) { const b = x[o + k + lag]; c += x[o + k] * b; e1 += b * b; }
+      const r = c / Math.sqrt(e0 * e1 + 1e-12); if (r > best) best = r;
+    }
+    v[i] = best >= S.VOICED_MIN_R ? 1 : 0; if (i + 1 < n) v[i + 1] = v[i];
+  }
+  return v;
+}
 
 // Messung einer Aufnahme (oder eines Referenz-Abschnitts)
 function analyzeTake(x, sr, S) {
@@ -266,6 +318,29 @@ function analyzeTake(x, sr, S) {
   const pk = (a, b) => { let m = -Infinity; for (let i = a; i <= Math.min(b, n - 1); i++) m = Math.max(m, env[i]); return m; };
   const later = []; for (let i = iOn + frames(0.4); i <= Math.min(iSlowEnd, iOn + frames(1.0)); i++) later.push(env[i]);
   const overshoot = later.length > 10 ? pk(iOn, iOn + frames(0.15)) - median(later) : null;
+
+  // Lautstärkeverlauf nur über die stimmhaften Laute (Endlaute wie ch, s, t sind von Natur aus leiser und zählen nicht)
+  const voiced = voicedFlags(x, fr, env, floorDb, S), gapV = frames(S.VOICED_GAP_SEC);
+  let vS = -1, vE = -1; for (let i = iOn; i <= iOff; i++) if (voiced[i]) { vS = i; break; } for (let i = iOff; i >= iOn; i--) if (voiced[i]) { vE = i; break; }
+  const vIdx = []; { let last = -1; for (let i = vS; i >= 0 && i <= vE; i++) if (voiced[i]) { if (last >= 0 && i - last > 1 && i - last - 1 <= gapV) for (let k = last + 1; k < i; k++) vIdx.push(k); vIdx.push(i); last = i; } }
+  const envS = new Float32Array(n); for (let i = 0; i < n; i++) { let s2 = 0, c2 = 0; for (let k = Math.max(0, i - 2); k <= Math.min(n - 1, i + 2); k++) { s2 += env[k]; c2++; } envS[i] = s2 / c2; }
+  let profile = null;
+  if (vIdx.length >= frames(S.VOICED_MIN_SEC)) {
+    // Kern = stimmhafte Rahmen zwischen dem ersten und letzten Rahmen, der höchstens PROFILE_TRIM_DB unter dem Spitzenwert liegt
+    const lv = vIdx.map((i) => envS[i]), peakV = percentile(lv, 90);
+    let k0 = 0, k1 = vIdx.length - 1; while (k0 < k1 && lv[k0] < peakV - S.PROFILE_TRIM_DB) k0++; while (k1 > k0 && lv[k1] < peakV - S.PROFILE_TRIM_DB) k1--;
+    const core = vIdx.slice(k0, k1 + 1), m = core.length;
+    if (m >= frames(S.VOICED_MIN_SEC)) {
+      const take = (a, b) => core.slice(Math.floor(a), Math.max(Math.floor(a) + 1, Math.floor(b))).map((i) => envS[i]);
+      const nStart = Math.min(m >> 1, frames(0.15)), nEnd = Math.max(Math.min(m >> 1, frames(0.2)), Math.floor(m * 0.2));
+      const startL = median(take(0, nStart)), plateau = median(take(m * 0.3, m * 0.8)), endL = median(take(m - nEnd, m));
+      let sx = 0, sy = 0, sxx = 0, sxy = 0; for (let k = 0; k < m; k++) { const t = k * fr.dt, y = envS[core[k]]; sx += t; sy += y; sxx += t * t; sxy += t * y; }
+      const slope = (m * sxy - sx * sy) / (m * sxx - sx * sx + 1e-12);
+      const hw2 = frames(0.05), lvC = core.map((i) => envS[i]); let maxDrop = 0, runMax = -Infinity;
+      for (let k = Math.floor(m * 0.1); k < m; k++) { const md = median(lvC.slice(Math.max(0, k - hw2), Math.min(m, k + hw2 + 1))); runMax = Math.max(runMax, md); maxDrop = Math.max(maxDrop, runMax - md); }
+      profile = { voicedDur: m * fr.dt, startRel: startL - plateau, endRel: endL - plateau, maxDrop, slope, vStart: tOf(core[0]), vEnd: tOf(core[m - 1]), core: [tOf(core[0]), tOf(core[m - 1])] };
+    }
+  }
   let Amax = 0; for (let i = iOn; i <= iOff; i++) Amax = Math.max(Amax, A[i]);
   const restFlux = iOff - iSlowEnd > 4 ? median(flux.subarray(iSlowEnd, iOff + 1)) : null;
   const sf0 = iOn + frames(0.25), slowFlux = iSlowEnd - sf0 > 10 ? median(flux.subarray(sf0, iSlowEnd + 1)) : null;
@@ -273,7 +348,7 @@ function analyzeTake(x, sr, S) {
   return {
     valid: true, ...base, A, Amax, dt: fr.dt, t0: fr.t0, n, tOn: tOf(iOn), tOff: tOf(iOff), tSlowEnd: tOf(iSlowEnd),
     voiced: tOf(iOff) - tOf(iOn), slowDur: tOf(iSlowEnd) - tOf(iOn), restDur: tOf(iOff) - tOf(iSlowEnd), restFlux, slowFlux,
-    medFlux: median(flux.subarray(iOn, iOff + 1)), breaks, slowRuns, nLong: longRuns.length, rise: Math.max(fr.dt, tOf(i90) - tOf(i10)), t10: tOf(i10), t90: tOf(i90), i10, i90, overshoot,
+    medFlux: median(flux.subarray(iOn, iOff + 1)), breaks, slowRuns, nLong: longRuns.length, rise: Math.max(fr.dt, tOf(i90) - tOf(i10)), t10: tOf(i10), t90: tOf(i90), i10, i90, overshoot, profile,
   };
 }
 
@@ -281,21 +356,25 @@ function analyzeTake(x, sr, S) {
 // word = { syl: Anzahl Silben }. Ergebnis: { pass, items: [{ ok, text }], ... }
 function judge(t, word, L) {
   const f = (v, d = 1) => v.toFixed(d).replace('.', ','), N = Math.max(1, word.syl || 1), items = [];
+  // Zielbereich der Dehnung: mit eigenem Vorbild aus der CD wortspezifisch, sonst Mittelwerte aller Beispiele
+  const ref = word.ref || null;
+  const lo = ref ? clamp(ref.slowDur * L.WORD_LO_FACTOR, L.ABS_MIN_SEC, L.SLOW_MIN) : L.SLOW_MIN;
+  const hi = ref ? clamp(ref.slowDur * L.WORD_HI_FACTOR, L.SLOW_MAX, L.ABS_MAX_SEC) : L.SLOW_MAX;
   if (!t.valid) {
     const m = { quiet: 'Zu leise oder zu viel Rauschen → näher ans Mikrofon, etwas lauter sprechen.', novoice: 'Keine Stimme erkannt → nochmal versuchen.', short: 'Aufnahme zu kurz → nochmal versuchen.' };
-    return { pass: false, fatal: true, items: [{ ok: false, text: m[t.reason] || m.short }] };
+    return { pass: false, fatal: true, lo, hi, items: [{ ok: false, text: m[t.reason] || m.short }] };
   }
-  const tgt = `Ziel: ${f(L.SLOW_MIN)}–${f(L.SLOW_MAX)} s`;
+  const tgt = `Ziel${ref ? ' für dieses Wort' : ''}: ${f(lo)}–${f(hi)} s`;
   let whole = false;
   // 1. Dehnung der ersten Silbe: Länge
-  if (N >= 2 && t.slowDur > L.SLOW_MAX) { whole = true; items.push({ ok: false, key: 'whole', text: `Du hast das ganze Wort gedehnt (${f(t.slowDur)} s am Stück). Nur die erste Silbe dehnen, den Rest normal sprechen.` }); }
-  else if (t.slowDur < L.SLOW_MIN * L.TOO_FAST_FRACTION) items.push({ ok: false, key: 'fast', text: `Zu schnell – das war fast normales Sprechtempo (Dehnung ${f(t.slowDur)} s). ${tgt}. Jeden Laut etwas dehnen, den Mund langsam von Laut zu Laut bewegen.` });
-  else if (t.slowDur < L.SLOW_MIN) items.push({ ok: false, key: 'short', text: `Etwas zu kurz gedehnt (${f(t.slowDur)} s). ${tgt}.` });
-  else if (t.slowDur > L.SLOW_MAX) items.push({ ok: false, key: 'long', text: `Zu lang / zu langsam (${f(t.slowDur)} s). ${tgt}.` });
+  if (N >= 2 && t.slowDur > hi) { whole = true; items.push({ ok: false, key: 'whole', text: `Du hast das ganze Wort gedehnt (${f(t.slowDur)} s am Stück). Nur die erste Silbe dehnen, den Rest normal sprechen.` }); }
+  else if (t.slowDur < lo * L.TOO_FAST_FRACTION) items.push({ ok: false, key: 'fast', text: `Zu schnell – das war fast normales Sprechtempo (Dehnung ${f(t.slowDur)} s). ${tgt}. Jeden Laut etwas dehnen, den Mund langsam von Laut zu Laut bewegen.` });
+  else if (t.slowDur < lo) items.push({ ok: false, key: 'short', text: `Etwas zu kurz gedehnt (${f(t.slowDur)} s). ${tgt}.` });
+  else if (t.slowDur > hi) items.push({ ok: false, key: 'long', text: `Zu lang / zu langsam (${f(t.slowDur)} s). ${tgt}.` });
   else items.push({ ok: true, key: 'dur', text: `Dehnung passt (${f(t.slowDur)} s).` });
   // 2. Tempo der Mundbewegung in der gedehnten Stelle
   const slowFlux = t.slowFlux;
-  if (slowFlux != null && t.slowDur >= L.SLOW_MIN * L.TOO_FAST_FRACTION) {
+  if (slowFlux != null && t.slowDur >= lo * L.TOO_FAST_FRACTION) {
     if (slowFlux > L.SLOW_FLUX_OK) items.push({ ok: false, key: 'flux', text: 'Mundbewegung von Laut zu Laut noch zu zackig → fließender und langsamer übergehen.' });
     else items.push({ ok: true, key: 'flux', text: 'Übergänge zwischen den Lauten fließend.' });
   }
@@ -310,10 +389,14 @@ function judge(t, word, L) {
   // 4. Pause mitten im Wort
   const brk = t.breaks.filter((b) => b[1] - b[0] >= L.BREAK_FAIL_SEC);
   if (brk.length) items.push({ ok: false, key: 'break', text: 'Pause mitten im Wort → durchgehend sprechen, nicht absetzen.' });
-  // 5. Einsatz
-  if (t.overshoot != null && t.overshoot > L.OVERSHOOT_HARD_DB) items.push({ ok: false, key: 'onset', text: 'Einsatz zu hart – der Anfang ist deutlich lauter als der Rest. Leise beginnen und die Stimme langsam anschwellen lassen.' });
-  else items.push({ ok: true, key: 'onset', text: t.rise >= L.RISE_SOFT_SEC ? `Weicher Einsatz (${Math.round(t.rise * 1000)} ms Anstieg).` : 'Einsatz in Ordnung.' });
-  return { pass: items.every((i) => i.ok), items };
+  // 5. Lautstärkeverlauf – nur über die stimmhaften Laute (Endlaute wie ch/s/t zählen nicht)
+  const p = t.profile;
+  if (p) {
+    if (p.startRel > L.START_HARD_DB) items.push({ ok: false, key: 'hard', text: `Anfang zu laut, eher gepresst (${f(p.startRel, 0)} dB lauter als die Mitte). Sehr leise beginnen und die Stimme gleichmäßig anschwellen lassen.` });
+    else if (p.endRel < L.END_FADE_DB && p.slope < L.SLOPE_FADE) items.push({ ok: false, key: 'fade', text: `Die Lautstärke sinkt während der Dehnung (am Ende ${f(-p.endRel, 0)} dB leiser als in der Mitte). Gleichmäßig halten oder leicht ansteigen lassen.` });
+    else items.push({ ok: true, key: 'loud', text: p.slope >= L.SLOPE_RISING ? 'Weicher Einstieg, die Lautstärke steigt sanft an – genau richtig.' : 'Weicher Einstieg, Lautstärke gleichmäßig.' });
+  }
+  return { pass: items.every((i) => i.ok), items, lo, hi };
 }
 // ==== CORE END
 
@@ -329,8 +412,23 @@ const showBanner = (m) => { $('banner').textContent = m; $('banner').hidden = !m
 // ---------- Wortliste ----------
 let words = [], deck = [], cur = null, doneCount = 0, lastResult = null;
 const parseWords = (txt) => txt.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
-  const parts = l.split('|').map((p) => p.trim()).filter(Boolean); return { parts, text: parts.join(''), syl: parts.length };
+  const parts = l.split('|').map((p) => p.trim()).filter(Boolean), text = parts.join('');
+  return { parts, text, syl: parts.length, ref: REF_WORDS[text.toLowerCase()] || null };
 });
+const END_SOUNDS = [['sch', 'sch'], ['ch', 'ch'], ['tz', 'tz'], ['ß', 'ß'], ['st', 'st'], ['s', 's'], ['f', 'f'], ['t', 't'], ['p', 'p'], ['k', 'k'], ['x', 'x'], ['z', 'z']];   // stimmlose Endlaute
+// Lautliche Merkmale aus der Schreibweise: stimmhafter / stimmloser Anfang, Anfangsmitlaute, Endlaut
+function describeWord(w) {
+  const t = w.text.toLowerCase(), V = 'aeiouäöüy';
+  let i = 0; const units = [];
+  while (i < t.length && !V.includes(t[i])) { const u = ['sch', 'pf', 'ch', 'qu', 'tz', 'ph'].find((x) => t.startsWith(x, i)); units.push(u || t[i]); i += (u || t[i]).length; }
+  const first = units[0] || '', onset = units.join('');
+  let kind;
+  if (!units.length) kind = 'vokal';
+  else if (first === 'sch' || (first === 's' && units[1] && 'pt'.includes(units[1])) || ['f', 'v', 'ph', 'ch', 'p', 't', 'k', 'q', 'c', 'z', 'tz', 'pf', 'h'].includes(first)) kind = 'stimmlos';
+  else kind = 'stimmhaft';
+  const end = (END_SOUNDS.find(([suf]) => t.endsWith(suf)) || [])[1] || '';
+  return { onset: onset ? onset[0].toUpperCase() + onset.slice(1) : '', kind, nOnset: units.length, end };
+}
 function loadWords() { words = parseWords(store.get('dehn_words', WORDS_DEFAULT)); if (!words.length) words = parseWords(WORDS_DEFAULT); }
 function nextWord() {
   if (!deck.length) {
@@ -349,9 +447,19 @@ function renderWord() {
     ? `Nur die erste Silbe („${cur.parts[0]}“) dehnen, den Rest ganz normal sprechen.`
     : 'Jeden Laut etwas dehnen, den Mund langsam von Laut zu Laut bewegen.';
   $('progress').textContent = `Geschafft: ${doneCount}`; $('deckinfo').textContent = `noch ${deck.length} in dieser Runde`;
-  $('fb').hidden = true; clearTimeout(autoTimer); setStatus('');
+  $('fb').hidden = true; setStatus('');
+  $('endnote').textContent = wordInfoLines(cur).join('\n');
+  updateModelButton();
 }
-let autoTimer = null;
+function wordInfoLines(w) {
+  const d = describeWord(w), L2 = [];
+  if (d.kind === 'vokal') L2.push('Wort beginnt mit einem Vokal: Stimme ganz leise und weich einsetzen, nicht anstoßen.');
+  else if (d.kind === 'stimmlos') L2.push(`Anfang stimmlos („${d.onset}“): erst den Laut mit sanftem Luftstrom beginnen, die Stimme setzt danach leise ein.`);
+  else L2.push(`Anfang stimmhaft („${d.onset}“): die Stimme gleich ganz leise einsetzen und anschwellen lassen.`);
+  if (d.end) L2.push(`Das „${d.end}“ am Ende ist von Natur aus leiser – das ist richtig so und wird nicht bemängelt.`);
+  L2.push(w.ref ? `Eigenes Vorbild aus deiner CD vorhanden (Dehnung ca. ${fmt(w.ref.slowDur)} s).` : 'Kein eigenes Vorbild für dieses Wort – bewertet wird nach den Mittelwerten aller CD-Beispiele.');
+  return L2;
+}
 const setStatus = (t) => { $('status').textContent = t; };
 
 // ---------- Aufnahme mit Selbst-Stopp ----------
@@ -375,7 +483,7 @@ $('rec').addEventListener('click', () => { if (!rec) startRecording(); else if (
 $('micOff').addEventListener('click', (e) => { e.preventDefault(); if (micStream) micStream.getTracks().forEach((t) => t.stop()); micStream = null; $('micOff').hidden = true; });
 
 async function startRecording() {
-  showBanner(''); clearTimeout(autoTimer); $('fb').hidden = true; $('countdown').textContent = '';
+  showBanner(''); $('fb').hidden = true;
   try {
     if (!micStream || !micStream.active)
       // ohne automatische Pegelregelung/Rauschfilter, sonst wird der Lautstärkeverlauf verfälscht
@@ -422,14 +530,14 @@ async function finishRecording() {
     for (const c of r.chunks) { raw.set(c, o); o += c.length; }
     const samples = await resampleTo(raw, r.sr, ANALYSIS_SR);
     const t = analyzeTake(samples, ANALYSIS_SR, SETTINGS), j = judge(t, cur, LIMITS);
-    lastResult = { t, j }; showResult(t, j);
+    showResult(t, j);
   } catch (e) { console.error(e); showBanner('Auswertung fehlgeschlagen: ' + (e.message || e)); }
   setRecUI('idle');
 }
 
 // ---------- Ergebnis ----------
 const TITLES = { fast: 'Zu schnell', short: 'Etwas zu kurz gedehnt', long: 'Zu langsam / zu lang', whole: 'Ganzes Wort gedehnt', rest: 'Rest des Wortes fehlt',
-  restslow: 'Rest in Zeitlupe', flux: 'Übergänge zu zackig', break: 'Pause im Wort', onset: 'Einsatz zu hart' };
+  restslow: 'Rest in Zeitlupe', flux: 'Übergänge zu zackig', break: 'Pause im Wort', hard: 'Anfang zu laut', fade: 'Lautstärke sinkt' };
 function showResult(t, j) {
   $('fb').hidden = false;
   const bad = j.items.filter((i) => !i.ok), good = j.items.filter((i) => i.ok);
@@ -437,58 +545,157 @@ function showResult(t, j) {
   v.textContent = j.pass ? 'Sehr gut prolongiert ✓' : (bad[0].key && TITLES[bad[0].key]) || 'Nochmal versuchen';
   const ul = $('items'); ul.textContent = '';
   [...bad, ...good].forEach((i) => { const li = document.createElement('li'); li.className = i.ok ? 'ok' : 'bad'; li.textContent = i.text; ul.append(li); });
-  drawPlot(t);
+  lastResult = { t, j, ref: cur.ref }; drawPlot(t, j, cur.ref); fillCompare(t, cur.ref);
+  const p = t.valid ? t.profile : null, db1 = (x) => (x > 0 ? '+' : '') + fmt(x);
   const rows = t.valid ? [['Dehnung der ersten Silbe', fmt(t.slowDur, 2) + ' s'], ['Rest danach', fmt(t.restDur, 2) + ' s'], ['Klangänderung beim Dehnen', t.slowFlux == null ? '–' : Math.round(t.slowFlux) + ' dB/s'],
-    ['Klangänderung im Rest', t.restFlux == null ? '–' : Math.round(t.restFlux) + ' dB/s'], ['Anstieg am Anfang', Math.round(t.rise * 1000) + ' ms'], ['Anfangsspitze', t.overshoot == null ? '–' : fmt(t.overshoot) + ' dB'],
-    ['Stimme gesamt', fmt(t.voiced, 2) + ' s'], ['Abstand Stimme/Rauschen', Math.round(t.snr) + ' dB']] : [['Keine Messwerte', t.reason || '']];
+    ['Klangänderung im Rest', t.restFlux == null ? '–' : Math.round(t.restFlux) + ' dB/s'], ['Stimmhafter Teil', p ? fmt(p.voicedDur, 2) + ' s' : '–'],
+    ['Anfang gegenüber der Mitte', p ? db1(p.startRel) + ' dB' : '–'], ['Ende gegenüber der Mitte', p ? db1(p.endRel) + ' dB' : '–'], ['Lautstärke-Anstieg', p ? db1(p.slope) + ' dB/s' : '–'],
+    ['Anstieg am Anfang (10→90 %)', Math.round(t.rise * 1000) + ' ms'], ['Abstand Stimme/Rauschen', Math.round(t.snr) + ' dB']] : [['Keine Messwerte', t.reason || '']];
   $('values').innerHTML = rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
-  $('again').textContent = j.pass ? 'Noch einmal' : 'Nochmal versuchen';
-  $('next').textContent = j.pass ? 'Weiter ▸' : 'Überspringen ▸';
+  $('again').textContent = j.pass ? 'Noch einmal üben' : 'Nochmal versuchen';
+  $('next').textContent = j.pass ? 'Nächstes Wort ▸' : 'Überspringen ▸';
   $('next').className = 'btn' + (j.pass ? ' primary' : '');
   $('again').className = 'btn' + (j.pass ? '' : ' primary');
   $('fb').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  clearTimeout(autoTimer); $('countdown').textContent = '';
-  if (j.pass) { doneCount++; $('progress').textContent = `Geschafft: ${doneCount}`; let left = LIMITS.AUTO_NEXT_SEC;
-    const tick = () => { $('countdown').textContent = left > 0 ? `Nächstes Wort in ${left} …` : ''; if (left-- <= 0) { goNext(); return; } autoTimer = setTimeout(tick, 1000); }; tick(); }
+  if (j.pass) { doneCount++; $('progress').textContent = `Geschafft: ${doneCount}`; }
 }
-function goNext() { clearTimeout(autoTimer); nextWord(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+// alles manuell: das Ergebnis bleibt so lange stehen, wie du willst
+function goNext() { nextWord(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 $('next').addEventListener('click', goNext);
-$('again').addEventListener('click', () => { clearTimeout(autoTimer); $('countdown').textContent = ''; $('fb').hidden = true; window.scrollTo({ top: 0, behavior: 'smooth' }); startRecording(); });
+$('again').addEventListener('click', () => { $('fb').hidden = true; setStatus(''); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 
-function drawPlot(t) {
+function fillCompare(t, ref) {
+  const tb = $('cmpTable'); $('legRef').hidden = !ref;
+  if (!t.valid || !t.profile) { tb.innerHTML = ''; return; }
+  const p = t.profile, sg = (x) => (x > 0 ? '+' : '') + fmt(x);
+  if (!ref) { tb.innerHTML = '<tr><td colspan="3" class="small">Für dieses Wort gibt es kein eigenes Vorbild in deinen CD-Dateien.</td></tr>'; return; }
+  const row = (n, a, b) => `<tr><td>${n}</td><td>${a}</td><td>${b}</td></tr>`;
+  tb.innerHTML = '<tr><th>Vergleich mit dem Vorbild</th><th>Du</th><th>Vorbild</th></tr>' +
+    row('Dehnung', fmt(t.slowDur, 2) + ' s', fmt(ref.slowDur, 2) + ' s') + row('Anfang gegenüber der Mitte', sg(p.startRel) + ' dB', sg(ref.start) + ' dB') +
+    row('Ende gegenüber der Mitte', sg(p.endRel) + ' dB', sg(ref.end) + ' dB') + row('Lautstärke-Anstieg', sg(p.slope) + ' dB/s', sg(ref.slope) + ' dB/s');
+}
+function drawPlot(t, j, ref) {
   const c = $('plot'), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
   c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
   const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   const css = getComputedStyle(document.documentElement), col = (n) => css.getPropertyValue(n).trim();
   if (!t.valid) { g.fillStyle = col('--muted'); g.font = '14px system-ui'; g.textAlign = 'center'; g.fillText('keine auswertbare Stimme', W / 2, H / 2); return; }
-  const padL = 6, padR = 6, top = 8, bot = 22, tMin = -0.3, tMax = Math.max(t.tOff - t.tOn + 0.3, LIMITS.SLOW_MAX + 0.3);
+  const lo = j ? j.lo : LIMITS.SLOW_MIN, hi = j ? j.hi : LIMITS.SLOW_MAX;
+  const padL = 6, padR = 6, top = 8, bot = 22, tMin = -0.3, tMax = Math.min(8, Math.max(t.tOff - t.tOn + 0.3, hi + 0.3));
   const X = (s) => padL + ((s - tMin) / (tMax - tMin)) * (W - padL - padR), yb = H - bot;
   const Y = (a) => yb - clamp(a / t.Amax, 0, 1.05) * (yb - top);
   const slowEnd = t.tSlowEnd - t.tOn, off = t.tOff - t.tOn;
-  g.fillStyle = col('--target'); g.fillRect(X(LIMITS.SLOW_MIN), top, X(LIMITS.SLOW_MAX) - X(LIMITS.SLOW_MIN), yb - top);
+  g.fillStyle = col('--target'); g.fillRect(X(lo), top, X(hi) - X(lo), yb - top);
   g.fillStyle = col('--slow'); g.fillRect(X(0), top, X(slowEnd) - X(0), yb - top);
   if (off - slowEnd > 0.1) { g.fillStyle = col('--rest'); g.fillRect(X(slowEnd), top, X(off) - X(slowEnd), yb - top); }
   g.strokeStyle = col('--muted'); g.lineWidth = 1; g.beginPath(); g.moveTo(X(0), top); g.lineTo(X(0), yb); g.stroke();
+  if (t.profile) { const c0 = t.profile.core[0] - t.tOn, c1 = t.profile.core[1] - t.tOn; g.fillStyle = col('--accent'); g.fillRect(X(c0), yb + 3, Math.max(2, X(c1) - X(c0)), 3); }
   g.strokeStyle = col('--accent'); g.lineWidth = 2; g.beginPath(); let st = false;
   for (let i = 0; i < t.n; i++) { const s = t.t0 + i * t.dt - t.tOn; if (s < tMin || s > tMax) continue; if (!st) { g.moveTo(X(s), Y(t.A[i])); st = true; } else g.lineTo(X(s), Y(t.A[i])); }
   g.stroke();
+  if (ref && ref.curve) {                                    // Vorbild dieses Wortes (gestrichelt, auf eigenen Höchstwert normiert)
+    g.strokeStyle = col('--muted'); g.lineWidth = 1.6; g.setLineDash([5, 4]); g.beginPath();
+    ref.curve.forEach((v, k) => { const s = -0.15 + k * 0.05, y = yb - clamp(v / 100, 0, 1.05) * (yb - top); if (k === 0) g.moveTo(X(s), y); else g.lineTo(X(s), y); });
+    g.stroke(); g.setLineDash([]);
+  }
   g.fillStyle = col('--muted'); g.font = '11px system-ui'; g.textAlign = 'center';
   for (let s = 0; s <= tMax; s += 1) g.fillText(s + ' s', X(s), H - 6);
 }
-window.addEventListener('resize', () => { if (lastResult && !$('fb').hidden) drawPlot(lastResult.t); });
+window.addEventListener('resize', () => { if (lastResult && !$('fb').hidden) drawPlot(lastResult.t, lastResult.j, lastResult.ref); });
 
 // ---------- Einstellungen ----------
 function renderRef() {
   const rows = Object.values(REFERENCE).map((r) => `<tr><td>${r.label}</td><td>${r.v.map((x) => fmt(x, Math.abs(x) < 10 && x % 1 ? 1 : 0)).join(' / ')}</td></tr>`);
   $('refTable').innerHTML = '<tr><th>aus der CD gemessen</th><th>min / Mitte / max</th></tr>' + rows.join('') +
     `<tr><th>Grenzwerte (LIMITS)</th><th></th></tr><tr><td>Dehnung erste Silbe</td><td>${fmt(LIMITS.SLOW_MIN)}–${fmt(LIMITS.SLOW_MAX)} s</td></tr>
-     <tr><td>Rest pro Silbe höchstens</td><td>${fmt(LIMITS.REST_SYL_MAX_SEC)} s</td></tr><tr><td>harter Einsatz ab</td><td>&gt; ${LIMITS.OVERSHOOT_HARD_DB} dB Anfangsspitze</td></tr>`;
+     <tr><td>Rest pro Silbe höchstens</td><td>${fmt(LIMITS.REST_SYL_MAX_SEC)} s</td></tr><tr><td>Anfang zu laut ab</td><td>&gt; ${LIMITS.START_HARD_DB} dB über der Mitte</td></tr>
+     <tr><td>Lautstärke sinkt ab</td><td>Ende &lt; ${LIMITS.END_FADE_DB} dB und Verlauf &lt; ${LIMITS.SLOPE_FADE} dB/s</td></tr>`;
 }
 $('wordsText').value = store.get('dehn_words', WORDS_DEFAULT).split('\n').join('\n');
 $('saveWords').addEventListener('click', () => { store.set('dehn_words', $('wordsText').value); loadWords(); deck = []; nextWord(); showBanner(''); });
 $('resetWords').addEventListener('click', () => { $('wordsText').value = WORDS_DEFAULT; store.set('dehn_words', WORDS_DEFAULT); loadWords(); deck = []; nextWord(); });
 $('shuffle').addEventListener('change', () => { deck = []; });
-renderRef(); loadWords(); nextWord(); setRecUI('idle');
+
+/* ---------- Vorbilder aus den eigenen CD-Dateien (bleiben auf diesem Gerät) ---------- */
+// Zeitfenster der gedehnten Beispiele (Sekunden) in den beiden CD-Dateien, erkannt an der Länge der Datei
+const CD_FILES = { silben: 292.4, antwort: 184.3 };
+const CD_CLIPS = [
+  ['Fra', 'silben', 25.19, 27.71], ['Pro', 'silben', 33.31, 35.67], ['Krie', 'silben', 41.09, 43.52], ['Bla', 'silben', 47.70, 51.04],
+  ['Glei', 'silben', 55.20, 58.26], ['Tra', 'silben', 76.55, 79.62], ['Frei', 'silben', 89.03, 91.67], ['Bru', 'silben', 100.55, 103.50],
+  ['Dra', 'silben', 111.96, 115.24], ['Flo', 'silben', 124.66, 127.11], ['Schlie', 'silben', 135.07, 138.43], ['Gra', 'silben', 146.55, 149.73],
+  ['Troll', 'silben', 158.64, 161.83], ['Berlin', 'antwort', 22.57, 25.84], ['Milch', 'antwort', 38.09, 41.34], ['Zwei', 'antwort', 29.66, 33.30],
+];
+let clips = {};                                  // wort(klein) -> { data: Int16Array, sr }
+function openClipDB() {
+  return new Promise((res, rej) => { const r = indexedDB.open('dehnuebung-clips', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('clips', { keyPath: 'word' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+async function clipsStore(mode, fn) {
+  const db = await openClipDB();
+  return new Promise((res, rej) => { const tx = db.transaction('clips', mode), req = fn(tx.objectStore('clips')); tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); });
+}
+async function loadClips() {
+  try { const all = (await clipsStore('readonly', (st) => st.getAll())) || []; clips = {}; all.forEach((c) => { clips[c.word] = c; }); } catch (e) { clips = {}; }
+  $('cdStatus').textContent = Object.keys(clips).length ? `${Object.keys(clips).length} Vorbilder gespeichert.` : 'Noch keine Vorbilder geladen.';
+  updateModelButton();
+}
+function decodeToMono(arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext, ctx = new Ctx(1, 1, ANALYSIS_SR);
+    const done = (buf) => { const out = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c++) { const ch = buf.getChannelData(c); for (let i = 0; i < out.length; i++) out[i] += ch[i] / buf.numberOfChannels; }
+      resolve({ samples: out, sr: buf.sampleRate }); };
+    const p = ctx.decodeAudioData(arrayBuffer, done, reject); if (p && p.catch) p.catch(reject);
+  });
+}
+$('cdFiles').addEventListener('change', async (e) => {
+  const st = $('cdStatus'); let found = 0;
+  for (const file of Array.from(e.target.files)) {
+    try {
+      st.textContent = `Lese „${file.name}“ …`;
+      const { samples, sr } = await decodeToMono(await file.arrayBuffer()), dur = samples.length / sr;
+      const kind = Object.keys(CD_FILES).find((k) => Math.abs(dur - CD_FILES[k]) < 1.5);
+      if (!kind) { st.textContent = `„${file.name}“ ist keine der beiden erwarteten CD-Dateien (Länge ${fmt(dur, 0)} s).`; continue; }
+      for (const [word, k, a, b] of CD_CLIPS) {
+        if (k !== kind) continue;
+        const seg = samples.subarray(Math.floor(a * sr), Math.min(samples.length, Math.ceil(b * sr))), i16 = new Int16Array(seg.length);
+        for (let i = 0; i < seg.length; i++) i16[i] = clamp(Math.round(seg[i] * 32767), -32768, 32767);
+        await clipsStore('readwrite', (store) => store.put({ word: word.toLowerCase(), label: word, data: i16, sr })); found++;
+      }
+    } catch (err) { console.warn(err); st.textContent = `„${file.name}“ konnte nicht gelesen werden.`; }
+  }
+  e.target.value = ''; await loadClips(); if (found) $('cdStatus').textContent = `${found} Vorbilder gespeichert. Sie erscheinen bei passenden Wörtern als „Vorbild anhören“.`;
+});
+let playing = null;
+function updateModelButton() { const has = cur && clips[cur.text.toLowerCase()]; $('model').hidden = !has; }
+$('model').addEventListener('click', () => {
+  const b = $('model');
+  if (playing) { try { playing.onended = null; playing.stop(); } catch (e) { /* ok */ } playing = null; b.textContent = '▶ Vorbild anhören'; return; }
+  const c = clips[cur.text.toLowerCase()]; if (!c) return;
+  const ctx = getAC(); ctx.resume(); const f = new Float32Array(c.data.length); for (let i = 0; i < f.length; i++) f[i] = c.data[i] / 32767;
+  const buf = ctx.createBuffer(1, f.length, c.sr); buf.copyToChannel(f, 0);
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); playing = src; b.textContent = '■ Stopp';
+  src.onended = () => { playing = null; b.textContent = '▶ Vorbild anhören'; }; src.start();
+});
+
+/* ---------- Schema: so sieht gutes Prolongieren aus ---------- */
+function drawIdeal() {
+  const c = $('ideal'), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight; if (!W) return;
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement), col = (n) => css.getPropertyValue(n).trim();
+  const padL = 6, padR = 6, top = 8, bot = 22, T = 3.2, X = (s) => padL + (s / T) * (W - padL - padR), yb = H - bot, Y = (a) => yb - a * (yb - top - 6);
+  g.fillStyle = col('--target'); g.fillRect(X(LIMITS.SLOW_MIN), top, X(LIMITS.SLOW_MAX) - X(LIMITS.SLOW_MIN), yb - top);
+  g.strokeStyle = col('--accent'); g.lineWidth = 2.5; g.beginPath(); g.moveTo(X(0), Y(0));
+  for (let s = 0; s <= 2.1; s += 0.02) g.lineTo(X(s), Y(0.12 + 0.88 * Math.pow(s / 2.1, 0.9)));
+  g.lineTo(X(2.2), Y(0.3)); g.lineTo(X(2.5), Y(0.25)); g.lineTo(X(2.6), Y(0)); g.stroke();
+  g.fillStyle = col('--muted'); g.font = '11px system-ui'; g.textAlign = 'left'; g.fillText('leise beginnen', X(0.05), Y(0.3));
+  g.textAlign = 'center'; g.fillText('gleichmäßig lauter', X(1.0), Y(0.5)); g.fillText('Endlaut leiser', X(2.55), Y(0.45));
+  for (let s = 0; s <= 3; s += 1) g.fillText(s + ' s', X(s), H - 6);
+}
+$('idealCard').addEventListener('toggle', () => { if ($('idealCard').open) requestAnimationFrame(drawIdeal); });
+window.addEventListener('resize', () => { if ($('idealCard').open) drawIdeal(); });
+renderRef(); loadWords(); nextWord(); setRecUI('idle'); loadClips();
 window.__app = { cur: () => cur, last: () => lastResult, words: () => words };   // nur zum Testen
 </script>
 </body>
