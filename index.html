@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<title>Dehnübung</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #ffffff; --ink: #1b2331; --muted: #667389; --line: #dde2ea;
+    --accent: #2563eb; --accent-ink: #fff; --ok: #1b8a4b; --okbg: #e3f5ea; --bad: #c2410c; --badbg: #fdeee3;
+    --rec: #dc2626; --slow: rgba(37,99,235,.16); --rest: rgba(234,138,40,.22); --target: rgba(27,138,75,.20);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161d; --card:#1b212b; --ink:#e8ecf3; --muted:#93a0b4; --line:#2b3441; --accent:#5b8def; --accent-ink:#0b1220;
+      --ok:#4cc17f; --okbg:#173325; --bad:#f0a24a; --badbg:#3a2a18; --rec:#ff6b5e; --slow:rgba(91,141,239,.22); --rest:rgba(240,162,74,.25); --target:rgba(76,193,127,.22); }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  main { max-width: 560px; margin: 0 auto; padding: 14px 16px 40px; }
+  .top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: .9rem; margin-bottom: 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+  .word { text-align: center; font-size: clamp(2.8rem, 16vw, 4.6rem); font-weight: 800; letter-spacing: .01em; line-height: 1.1; margin: 8px 0 6px; word-break: break-word; }
+  .word .first { color: var(--accent); } .word .sep { color: var(--muted); font-weight: 400; padding: 0 .06em; }
+  .hint { text-align: center; color: var(--muted); font-size: .95rem; min-height: 2.8em; }
+  .micwrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 8px 0 2px; }
+  #rec { width: 100%; max-width: 360px; font: inherit; font-size: 1.15rem; font-weight: 700; padding: 18px 20px; border-radius: 999px; border: 0;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; touch-action: manipulation; }
+  #rec.listen { background: var(--ok); color: #fff; } #rec.speak { background: var(--rec); color: #fff; } #rec:disabled { opacity: .6; }
+  .meter { width: 100%; max-width: 360px; height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; }
+  .meter > div { height: 100%; width: 0; background: var(--ok); transition: width .06s linear; }
+  .status { min-height: 1.4em; color: var(--muted); font-size: .95rem; text-align: center; }
+  .verdict { font-size: 1.5rem; font-weight: 800; padding: 12px 14px; border-radius: 12px; margin-bottom: 10px; }
+  .verdict.ok { background: var(--okbg); color: var(--ok); } .verdict.bad { background: var(--badbg); color: var(--bad); }
+  ul.items { list-style: none; padding: 0; margin: 0 0 8px; }
+  ul.items li { position: relative; padding: 7px 0 7px 28px; border-bottom: 1px solid var(--line); }
+  ul.items li:last-child { border-bottom: 0; }
+  ul.items li::before { position: absolute; left: 2px; top: 7px; font-weight: 800; }
+  ul.items li.ok::before { content: "✓"; color: var(--ok); } ul.items li.bad::before { content: "✗"; color: var(--bad); }
+  ul.items li.bad { font-weight: 600; }
+  canvas { width: 100%; height: 150px; display: block; margin: 6px 0 4px; }
+  .legend { font-size: .8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+  .row { display: flex; gap: 10px; margin-top: 12px; } .row button { flex: 1; }
+  button.btn { font: inherit; font-weight: 600; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); font-size: .92rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  td, th { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); } td:not(:first-child), th:not(:first-child) { text-align: right; }
+  textarea { width: 100%; min-height: 220px; font: 15px/1.4 ui-monospace, Menlo, monospace; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .banner { padding: 10px 12px; border-radius: 10px; background: var(--badbg); color: var(--bad); margin-bottom: 12px; font-weight: 600; }
+  .small { font-size: .85rem; color: var(--muted); } [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div id="banner" class="banner" hidden></div>
+
+  <div class="top"><span id="progress"></span><span id="deckinfo"></span></div>
+
+  <div class="card" id="trainCard">
+    <div class="word" id="word">…</div>
+    <div class="hint" id="hint"></div>
+    <div class="micwrap">
+      <button id="rec">● Sprechen</button>
+      <div class="meter" id="meterWrap" hidden><div id="meter"></div></div>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <div class="card" id="fb" hidden>
+    <div class="verdict" id="verdict"></div>
+    <ul class="items" id="items"></ul>
+    <canvas id="plot"></canvas>
+    <div class="legend"><span><i style="background:var(--slow)"></i>gedehnt</span><span><i style="background:var(--rest)"></i>Rest des Wortes</span><span><i style="background:var(--target)"></i>Ziel für das Ende der Dehnung</span></div>
+    <div class="row"><button class="btn" id="again">Nochmal</button><button class="btn primary" id="next">Weiter ▸</button></div>
+    <div class="small" id="countdown" style="margin-top:8px;text-align:center"></div>
+    <details><summary>Messwerte</summary><table id="values"></table></details>
+  </div>
+
+  <details class="card"><summary>Wörter bearbeiten</summary>
+    <p class="small">Ein Wort pro Zeile, Silben mit <b>|</b> trennen (z. B. <b>Ber|lin</b>). Die Wörter stammen aus deinen CD-Dateien, die Schreibweise der Silben habe ich aus einer automatischen Transkription übernommen – bitte prüfen.</p>
+    <textarea id="wordsText" spellcheck="false"></textarea>
+    <div class="row"><button class="btn" id="resetWords">Zurücksetzen</button><button class="btn primary" id="saveWords">Speichern</button></div>
+    <label class="small" style="display:block;margin-top:10px"><input type="checkbox" id="shuffle" checked> zufällige Reihenfolge</label>
+  </details>
+
+  <details class="card"><summary>Wie wird bewertet?</summary>
+    <p class="small">Die Grenzwerte stammen aus den gedehnten Beispielen deiner CD (15 Stück). Sie stehen oben im Code (<b>LIMITS</b>) und lassen sich ändern.</p>
+    <table id="refTable"></table>
+    <p class="small" style="margin-top:10px"><a href="#" id="micOff" hidden>Mikrofon trennen</a></p>
+  </details>
+</main>
+
+<script>
+/* ==========================================================================
+   WÖRTER (Standardliste, im Browser änderbar) – "|" trennt Silben
+   ========================================================================== */
+const WORDS_DEFAULT = [
+  // einsilbige Silben mit zwei Mitlauten am Anfang (CD „Silben mit zwei Mitlauten“)
+  'Fra', 'Pro', 'Krie', 'Bla', 'Glei', 'Tra', 'Frei', 'Bru', 'Dra', 'Flo', 'Schlie', 'Gra', 'Troll', 'Bli', 'Schla',
+  'Klee', 'Zwie', 'Trau', 'Blei', 'Flur',
+  // Wörter (CD „Antwort mit einem Wort“): erste Silbe dehnen, Rest normal
+  'Ber|lin', 'Milch', 'Zwei', 'Rei|fen', 'Vier', 'Zy|lin|der', 'Schnar|chen', 'Zwer|ge', 'Ei|er', 'Ster|ne',
+  'Sie|ben', 'Fran|zö|sisch', 'Sat|tel', 'Brü|der', 'Schei|ne',
+].join('\n');
+
+/* ==========================================================================
+   REFERENZ aus den CD-Dateien (15 gedehnte Beispiele: 13 Silben + „Berlin“ + „Milch“), kleinster / mittlerer / größter Wert
+   ========================================================================== */
+const REFERENCE = {
+  slowDur:    { label: 'Dauer der Dehnung (s)',               v: [1.63, 2.01, 2.74] },
+  slowFlux:   { label: 'Klangänderung beim Dehnen (dB/s)',    v: [31, 38, 53] },
+  normalLen:  { label: 'normal gesprochene Silbe (s)',        v: [0.53, 0.62, 0.82] },
+  normalFlux: { label: 'Klangänderung normal gesprochen (dB/s)', v: [76, 110, 144] },
+  rise:       { label: 'Anstieg am Anfang (ms)',              v: [5, 45, 274] },
+  overshoot:  { label: 'Anfangsspitze (dB)',                  v: [-17, 0.8, 8] },
+};
+
+/* ==========================================================================
+   GRENZWERTE für die Bewertung – hier anpassen
+   ========================================================================== */
+const LIMITS = {
+  SLOW_MIN: 1.5,            // gedehnte erste Silbe mindestens so lange (s)   [CD: min 1,63]
+  SLOW_MAX: 3.0,            // höchstens so lange (s)                          [CD: max 2,74]
+  TOO_FAST_FRACTION: 0.5,   // unter 50 % von SLOW_MIN gilt es als „zu schnell“ (fast normales Tempo)
+  SLOW_FLUX_OK: 60,         // Klangänderung in der Dehnung höchstens (dB/s)   [CD: max 53; normal gesprochen ab 76]
+  REST_MIN_SEC: 0.15,       // bei mehrsilbigen Wörtern: Rest mindestens so lang pro weiterer Silbe (s)
+  REST_FLUX_MIN: 70,        // … und mindestens so „schnell“ gesprochen (dB/s)
+  REST_SYL_MAX_SEC: 0.9,    // … aber höchstens so lang pro Silbe (sonst „Zeitlupe“)
+  BREAK_FAIL_SEC: 0.5,      // Stille mitten im Wort ab so vielen Sekunden = abgesetzt
+  OVERSHOOT_HARD_DB: 9,     // Anfang so viel lauter als der Rest = harter Einsatz  [CD: max 8]
+  RISE_SOFT_SEC: 0.04,      // ab so viel Anstiegszeit wird „weicher Einsatz“ gelobt
+  AUTO_NEXT_SEC: 3,         // nach Erfolg so lange warten, dann nächstes Wort
+};
+
+/* ==========================================================================
+   Feineinstellungen der Messung
+   ========================================================================== */
+const SETTINGS = {
+  MIN_SNR_DB: 12, ONSET_ABOVE_FLOOR_DB: 8, ONSET_HOLD_SEC: 0.05, BAND_MIN_SNR: 4,
+  BREAK_SEC: 0.2, BREAK_ABOVE_FLOOR_DB: 3,
+  FLUX_SPAN_SEC: 0.04, FLUX_MEDIAN_SEC: 0.4, FLUX_GAP_SEC: 0.25, SLOW_FLUX_MAX: 85, SLOW_RUN_MIN_SEC: 0.4, SLOW_RUN_LONG_SEC: 0.6,
+  RISE_LOW: 0.10, RISE_HIGH: 0.90, ATTACK_WINDOW_SEC: 0.5,
+};
+
+// ==== CORE START
+const ANALYSIS_SR = 22050, HOP_SEC = 0.005, FRAME_N = 512, NB = 16;
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function percentile(arr, p) {
+  const s = Float32Array.from(arr).sort();
+  return s.length ? s[Math.min(s.length - 1, Math.max(0, Math.round((p / 100) * (s.length - 1))))] : 0;
+}
+const _fftCache = {};
+function getFFT(N) {
+  if (_fftCache[N]) return _fftCache[N];
+  const cos = new Float64Array(N / 2), sin = new Float64Array(N / 2), rev = new Uint32Array(N), bits = Math.log2(N);
+  for (let i = 0; i < N / 2; i++) { cos[i] = Math.cos(2 * Math.PI * i / N); sin[i] = Math.sin(2 * Math.PI * i / N); }
+  for (let i = 0; i < N; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); rev[i] = r; }
+  const win = new Float64Array(N); for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+  const fft = (re, im) => {
+    for (let i = 0; i < N; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= N; size *= 2) {
+      const half = size / 2, step = N / size;
+      for (let i = 0; i < N; i += size) for (let j = i, k = 0; j < i + half; j++, k += step) {
+        const l = j + half, tre = re[l] * cos[k] + im[l] * sin[k], tim = -re[l] * sin[k] + im[l] * cos[k];
+        re[l] = re[j] - tre; im[l] = im[j] - tim; re[j] += tre; im[j] += tim;
+      }
+    }
+  };
+  return (_fftCache[N] = { fft, win });
+}
+function bandEdges(sr) {
+  const fmin = 100, fmax = Math.min(8000, sr / 2 * 0.95), e = [];
+  for (let b = 0; b <= NB; b++) e.push(Math.round(fmin * Math.pow(fmax / fmin, b / NB) / (sr / FRAME_N)));
+  for (let b = 1; b <= NB; b++) if (e[b] <= e[b - 1]) e[b] = e[b - 1] + 1;
+  return e;
+}
+function analyzeFrames(x, sr) {
+  const hop = Math.max(1, Math.round(sr * HOP_SEC));
+  const n = x.length >= FRAME_N ? Math.floor((x.length - FRAME_N) / hop) + 1 : 0;
+  const rms = new Float32Array(n), bands = new Float32Array(n * NB);
+  const { fft, win } = getFFT(FRAME_N), edges = bandEdges(sr), re = new Float64Array(FRAME_N), im = new Float64Array(FRAME_N);
+  for (let i = 0; i < n; i++) {
+    const o = i * hop; let s = 0;
+    for (let k = 0; k < FRAME_N; k++) { const v = x[o + k]; s += v * v; re[k] = v * win[k]; im[k] = 0; }
+    rms[i] = Math.sqrt(s / FRAME_N); fft(re, im);
+    for (let b = 0; b < NB; b++) { let p = 0; for (let k = edges[b]; k < edges[b + 1]; k++) p += re[k] * re[k] + im[k] * im[k]; bands[i * NB + b] = p / (edges[b + 1] - edges[b]); }
+  }
+  return { rms, bands, hop, n, sr, dt: hop / sr, t0: FRAME_N / 2 / sr };
+}
+const toDb = (r) => 20 * Math.log10(r + 1e-6);
+function noiseProfile(fr, mask) {
+  const out = new Float64Array(NB); let c = 0;
+  for (let i = 0; i < fr.n; i++) if (mask[i]) { c++; for (let b = 0; b < NB; b++) out[b] += fr.bands[i * NB + b]; }
+  if (!c) { out.fill(1e-12); return Array.from(out); }
+  for (let b = 0; b < NB; b++) out[b] = Math.max(out[b] / c, 1e-12);
+  return Array.from(out);
+}
+function median(a) { if (!a.length) return 0; const s = Float32Array.from(a).sort(); return s[s.length >> 1]; }
+
+// Messung einer Aufnahme (oder eines Referenz-Abschnitts)
+function analyzeTake(x, sr, S) {
+  const fr = analyzeFrames(x, sr), n = fr.n;
+  if (n < 20) return { valid: false, reason: 'short' };
+  const env = new Float32Array(n); for (let i = 0; i < n; i++) env[i] = toDb(fr.rms[i]);
+  const peakDb = percentile(env, 99.5), floorDb = percentile(env, 5), snr = peakDb - floorDb;
+  const noise = noiseProfile(fr, Array.from(env, (v) => v <= floorDb + 6));
+  const base = { floorDb, peakDb, snr, dur: x.length / sr };
+  if (snr < S.MIN_SNR_DB) return { valid: false, reason: 'quiet', ...base };
+  const frames = (sec) => Math.round(sec / fr.dt), tOf = (i) => fr.t0 + i * fr.dt;
+
+  // Stimme von … bis …
+  const thrOn = Math.min(floorDb + S.ONSET_ABOVE_FLOOR_DB, peakDb - 6), hold = Math.max(1, frames(S.ONSET_HOLD_SEC));
+  let iOn = -1, iOff = -1, run = 0;
+  for (let i = 0; i < n; i++) { run = env[i] >= thrOn ? run + 1 : 0; if (run >= hold) { iOn = i - hold + 1; break; } }
+  run = 0;
+  for (let i = n - 1; i >= 0; i--) { run = env[i] >= thrOn ? run + 1 : 0; if (run >= hold) { iOff = i + hold - 1; break; } }
+  if (iOn < 0 || iOff <= iOn) return { valid: false, reason: 'novoice', ...base };
+
+  // Pausen mitten im Wort
+  const breaks = []; run = 0;
+  for (let i = iOn; i <= iOff; i++) {
+    if (env[i] < floorDb + S.BREAK_ABOVE_FLOOR_DB) run++; else { if (run >= frames(S.BREAK_SEC)) breaks.push([tOf(i - run), tOf(i)]); run = 0; }
+  }
+
+  // Änderungsgeschwindigkeit des Klangs (dB pro Sekunde): gedehnt = langsam, normal gesprochen = schnell
+  const pv = new Float64Array(NB);
+  for (let i = iOn; i <= iOff; i++) for (let b = 0; b < NB; b++) pv[b] += fr.bands[i * NB + b] / (iOff - iOn + 1);
+  let use = []; for (let b = 0; b < NB; b++) if (pv[b] >= S.BAND_MIN_SNR * noise[b]) use.push(b);
+  if (use.length < 4) use = Array.from({ length: NB }, (_, b) => b);
+  const lv = new Float32Array(n * NB);
+  for (let i = 0; i < n; i++) for (const b of use) lv[i * NB + b] = 10 * Math.log10(Math.max(fr.bands[i * NB + b] - noise[b], 0.3 * noise[b]) + 1e-20);
+  const lvMean = (i, b) => { let s = 0, c = 0; for (let k = Math.max(0, i - 1); k <= Math.min(n - 1, i + 1); k++) { s += lv[k * NB + b]; c++; } return s / c; };
+  const Dl = frames(S.FLUX_SPAN_SEC), flux = new Float32Array(n);
+  for (let i = Dl; i < n - Dl; i++) { let a = 0; for (const b of use) { const d = lvMean(i + Dl, b) - lvMean(i - Dl, b); a += d * d; } flux[i] = Math.sqrt(a / use.length) / (2 * Dl * fr.dt); }
+  const hw = frames(S.FLUX_MEDIAN_SEC) >> 1, fluxMed = new Float32Array(n);
+  for (let i = 0; i < n; i++) fluxMed[i] = median(flux.subarray(Math.max(0, i - hw), Math.min(n, i + hw + 1)));
+
+  // gedehnte Stelle: zusammenhängende Bereiche, in denen sich der Klang nur langsam ändert (Lücken bis FLUX_GAP_SEC
+  // werden überbrückt, z. B. Verschlusslaute). Alles davor (Anfangsmitlaute, Übergänge) gehört zur ersten Silbe.
+  const gapMax = frames(S.FLUX_GAP_SEC), runMin = frames(S.SLOW_RUN_MIN_SEC), runs = [];
+  let rs = -1, lastSlow = -1;
+  for (let j = iOn; j <= iOff + 1; j++) {
+    const slow = j <= iOff && fluxMed[j] < S.SLOW_FLUX_MAX;
+    if (slow) { if (rs < 0) rs = j; lastSlow = j; }
+    else if (rs >= 0 && (j > iOff || j - lastSlow > gapMax)) { if (lastSlow - rs + 1 >= runMin) runs.push([rs, lastSlow]); rs = -1; }
+  }
+  const longRuns = runs.filter((r) => r[1] - r[0] + 1 >= frames(S.SLOW_RUN_LONG_SEC));
+  let iSlowEnd = iOn;
+  if (longRuns.length) iSlowEnd = longRuns[longRuns.length - 1][1];
+  else if (runs.length) iSlowEnd = runs.reduce((m, r) => (r[1] - r[0] > m[1] - m[0] ? r : m))[1];
+  iSlowEnd = clamp(iSlowEnd, iOn, iOff);
+  const slowRuns = runs.map((r) => [tOf(r[0]), tOf(r[1])]);
+
+  // Einsatz: Anstiegszeit (10→90 %) und Anfangsspitze
+  const A = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0, c = 0; for (let k = Math.max(0, i - 1); k <= Math.min(n - 1, i + 1); k++) { s += fr.rms[k]; c++; } A[i] = s / c; }
+  const iStart = Math.max(0, iOn - frames(0.1)), lowAbs = Math.pow(10, floorDb / 20) * 1.5;
+  const w = clamp(iSlowEnd - iOn, frames(0.15), frames(S.ATTACK_WINDOW_SEC)), iA = Math.min(iOff, iOn + w), iB = Math.min(iA, iOn + (w >> 1));
+  let L = 0; for (let i = iB; i <= iA; i++) L += A[i] / (iA - iB + 1);
+  let i90 = iA; for (let i = iStart; i <= iA; i++) if (A[i] >= S.RISE_HIGH * L) { i90 = i; break; }
+  const low = Math.min(Math.max(S.RISE_LOW * L, lowAbs), 0.5 * L);
+  let i10 = i90; while (i10 > iStart && A[i10] > low) i10--;
+  const pk = (a, b) => { let m = -Infinity; for (let i = a; i <= Math.min(b, n - 1); i++) m = Math.max(m, env[i]); return m; };
+  const later = []; for (let i = iOn + frames(0.4); i <= Math.min(iSlowEnd, iOn + frames(1.0)); i++) later.push(env[i]);
+  const overshoot = later.length > 10 ? pk(iOn, iOn + frames(0.15)) - median(later) : null;
+  let Amax = 0; for (let i = iOn; i <= iOff; i++) Amax = Math.max(Amax, A[i]);
+  const restFlux = iOff - iSlowEnd > 4 ? median(flux.subarray(iSlowEnd, iOff + 1)) : null;
+  const sf0 = iOn + frames(0.25), slowFlux = iSlowEnd - sf0 > 10 ? median(flux.subarray(sf0, iSlowEnd + 1)) : null;
+
+  return {
+    valid: true, ...base, A, Amax, dt: fr.dt, t0: fr.t0, n, tOn: tOf(iOn), tOff: tOf(iOff), tSlowEnd: tOf(iSlowEnd),
+    voiced: tOf(iOff) - tOf(iOn), slowDur: tOf(iSlowEnd) - tOf(iOn), restDur: tOf(iOff) - tOf(iSlowEnd), restFlux, slowFlux,
+    medFlux: median(flux.subarray(iOn, iOff + 1)), breaks, slowRuns, nLong: longRuns.length, rise: Math.max(fr.dt, tOf(i90) - tOf(i10)), t10: tOf(i10), t90: tOf(i90), i10, i90, overshoot,
+  };
+}
+
+// Bewertung: vergleicht die Messung mit den Grenzwerten (LIMITS, aus den CD-Beispielen abgeleitet).
+// word = { syl: Anzahl Silben }. Ergebnis: { pass, items: [{ ok, text }], ... }
+function judge(t, word, L) {
+  const f = (v, d = 1) => v.toFixed(d).replace('.', ','), N = Math.max(1, word.syl || 1), items = [];
+  if (!t.valid) {
+    const m = { quiet: 'Zu leise oder zu viel Rauschen → näher ans Mikrofon, etwas lauter sprechen.', novoice: 'Keine Stimme erkannt → nochmal versuchen.', short: 'Aufnahme zu kurz → nochmal versuchen.' };
+    return { pass: false, fatal: true, items: [{ ok: false, text: m[t.reason] || m.short }] };
+  }
+  const tgt = `Ziel: ${f(L.SLOW_MIN)}–${f(L.SLOW_MAX)} s`;
+  let whole = false;
+  // 1. Dehnung der ersten Silbe: Länge
+  if (N >= 2 && t.slowDur > L.SLOW_MAX) { whole = true; items.push({ ok: false, key: 'whole', text: `Du hast das ganze Wort gedehnt (${f(t.slowDur)} s am Stück). Nur die erste Silbe dehnen, den Rest normal sprechen.` }); }
+  else if (t.slowDur < L.SLOW_MIN * L.TOO_FAST_FRACTION) items.push({ ok: false, key: 'fast', text: `Zu schnell – das war fast normales Sprechtempo (Dehnung ${f(t.slowDur)} s). ${tgt}. Jeden Laut etwas dehnen, den Mund langsam von Laut zu Laut bewegen.` });
+  else if (t.slowDur < L.SLOW_MIN) items.push({ ok: false, key: 'short', text: `Etwas zu kurz gedehnt (${f(t.slowDur)} s). ${tgt}.` });
+  else if (t.slowDur > L.SLOW_MAX) items.push({ ok: false, key: 'long', text: `Zu lang / zu langsam (${f(t.slowDur)} s). ${tgt}.` });
+  else items.push({ ok: true, key: 'dur', text: `Dehnung passt (${f(t.slowDur)} s).` });
+  // 2. Tempo der Mundbewegung in der gedehnten Stelle
+  const slowFlux = t.slowFlux;
+  if (slowFlux != null && t.slowDur >= L.SLOW_MIN * L.TOO_FAST_FRACTION) {
+    if (slowFlux > L.SLOW_FLUX_OK) items.push({ ok: false, key: 'flux', text: 'Mundbewegung von Laut zu Laut noch zu zackig → fließender und langsamer übergehen.' });
+    else items.push({ ok: true, key: 'flux', text: 'Übergänge zwischen den Lauten fließend.' });
+  }
+  // 3. Rest des Wortes (nur bei mehrsilbigen Wörtern): normal schnell
+  if (N >= 2 && !whole) {
+    const per = t.restDur / (N - 1);
+    if (t.restDur < L.REST_MIN_SEC * (N - 1) || (t.restFlux != null && t.restFlux < L.REST_FLUX_MIN && t.restDur > 0.3))
+      items.push({ ok: false, key: 'rest', text: 'Der Rest des Wortes fehlt oder ist auch gedehnt → nach der ersten Silbe normal weitersprechen.' });
+    else if (per > L.REST_SYL_MAX_SEC) items.push({ ok: false, key: 'restslow', text: `Rest des Wortes in Zeitlupe (${f(per)} s pro Silbe) → ab der zweiten Silbe normal sprechen.` });
+    else items.push({ ok: true, key: 'rest', text: 'Rest des Wortes normal gesprochen.' });
+  }
+  // 4. Pause mitten im Wort
+  const brk = t.breaks.filter((b) => b[1] - b[0] >= L.BREAK_FAIL_SEC);
+  if (brk.length) items.push({ ok: false, key: 'break', text: 'Pause mitten im Wort → durchgehend sprechen, nicht absetzen.' });
+  // 5. Einsatz
+  if (t.overshoot != null && t.overshoot > L.OVERSHOOT_HARD_DB) items.push({ ok: false, key: 'onset', text: 'Einsatz zu hart – der Anfang ist deutlich lauter als der Rest. Leise beginnen und die Stimme langsam anschwellen lassen.' });
+  else items.push({ ok: true, key: 'onset', text: t.rise >= L.RISE_SOFT_SEC ? `Weicher Einsatz (${Math.round(t.rise * 1000)} ms Anstieg).` : 'Einsatz in Ordnung.' });
+  return { pass: items.every((i) => i.ok), items };
+}
+// ==== CORE END
+
+/* ==========================================================================
+   Oberfläche
+   ========================================================================== */
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* privat/gesperrt */ } } };
+const showBanner = (m) => { $('banner').textContent = m; $('banner').hidden = !m; };
+
+// ---------- Wortliste ----------
+let words = [], deck = [], cur = null, doneCount = 0, lastResult = null;
+const parseWords = (txt) => txt.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+  const parts = l.split('|').map((p) => p.trim()).filter(Boolean); return { parts, text: parts.join(''), syl: parts.length };
+});
+function loadWords() { words = parseWords(store.get('dehn_words', WORDS_DEFAULT)); if (!words.length) words = parseWords(WORDS_DEFAULT); }
+function nextWord() {
+  if (!deck.length) {
+    deck = words.map((_, i) => i);
+    if ($('shuffle').checked) for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  }
+  cur = words[deck.shift()]; renderWord();
+}
+function renderWord() {
+  const w = $('word'); w.textContent = '';
+  cur.parts.forEach((p, i) => {
+    if (i) { const s = document.createElement('span'); s.className = 'sep'; s.textContent = '·'; w.append(s); }
+    const sp = document.createElement('span'); if (cur.syl > 1 && i === 0) sp.className = 'first'; sp.textContent = p; w.append(sp);
+  });
+  $('hint').textContent = cur.syl > 1
+    ? `Nur die erste Silbe („${cur.parts[0]}“) dehnen, den Rest ganz normal sprechen.`
+    : 'Jeden Laut etwas dehnen, den Mund langsam von Laut zu Laut bewegen.';
+  $('progress').textContent = `Geschafft: ${doneCount}`; $('deckinfo').textContent = `noch ${deck.length} in dieser Runde`;
+  $('fb').hidden = true; clearTimeout(autoTimer); setStatus('');
+}
+let autoTimer = null;
+const setStatus = (t) => { $('status').textContent = t; };
+
+// ---------- Aufnahme mit Selbst-Stopp ----------
+let ac = null, micStream = null, rec = null;
+function getAC() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); return ac; }
+async function resampleTo(samples, sr, target) {
+  if (sr === target) return samples;
+  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const off = new Ctx(1, Math.ceil(samples.length * target / sr), target);
+  const buf = off.createBuffer(1, samples.length, sr); buf.copyToChannel(samples, 0);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
+function setRecUI(state) {
+  const b = $('rec'); b.className = state === 'listen' ? 'listen' : state === 'speak' ? 'speak' : '';
+  b.disabled = state === 'arm' || state === 'busy';
+  b.textContent = { idle: '● Sprechen', arm: 'Moment …', listen: 'Jetzt sprechen', speak: 'Ich höre … (fertig? tippen)', busy: 'Auswertung …' }[state];
+  $('meterWrap').hidden = !(state === 'arm' || state === 'listen' || state === 'speak');
+}
+$('rec').addEventListener('click', () => { if (!rec) startRecording(); else if (rec.phase === 'speak') finishRecording(false); else if (rec.phase === 'listen') cancelRecording('Abgebrochen.'); });
+$('micOff').addEventListener('click', (e) => { e.preventDefault(); if (micStream) micStream.getTracks().forEach((t) => t.stop()); micStream = null; $('micOff').hidden = true; });
+
+async function startRecording() {
+  showBanner(''); clearTimeout(autoTimer); $('fb').hidden = true; $('countdown').textContent = '';
+  try {
+    if (!micStream || !micStream.active)
+      // ohne automatische Pegelregelung/Rauschfilter, sonst wird der Lautstärkeverlauf verfälscht
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    showBanner('Mikrofon nicht verfügbar: ' + (e.name === 'NotAllowedError' ? 'Zugriff verweigert – in den Browser-Einstellungen erlauben.' : e.message)); return;
+  }
+  $('micOff').hidden = false;
+  const ctx = getAC(); await ctx.resume();
+  const src = ctx.createMediaStreamSource(micStream), an = ctx.createAnalyser(), mute = ctx.createGain(), proc = ctx.createScriptProcessor(4096, 1, 1);
+  an.fftSize = 1024; mute.gain.value = 0; const chunks = [];
+  proc.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  src.connect(an); src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  rec = { phase: 'arm', t0: performance.now(), chunks, nodes: [src, proc, mute], sr: ctx.sampleRate, base: [], voiceMs: 0, silenceMs: 0, last: performance.now(), baseDb: -70 };
+  setRecUI('arm'); setStatus('Kurz still sein …');
+  const buf = new Float32Array(an.fftSize), thr = { arm: 600, noVoice: 10000, max: 15000, silence: 1000 };
+  const loop = () => {
+    if (!rec) return;
+    const now = performance.now(), dtMs = now - rec.last; rec.last = now;
+    an.getFloatTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    const db = 20 * Math.log10(Math.sqrt(s / buf.length) + 1e-6), el = now - rec.t0;
+    $('meter').style.width = clamp((db + 60) / 50, 0, 1) * 100 + '%';
+    if (rec.phase === 'arm') {
+      rec.base.push(db);
+      if (el >= thr.arm) { rec.baseDb = median(rec.base); rec.phase = 'listen'; setRecUI('listen'); setStatus('Sprich das Wort – ich höre, wann du fertig bist.'); }
+    } else if (rec.phase === 'listen') {
+      rec.voiceMs = db > rec.baseDb + 10 ? rec.voiceMs + dtMs : 0;
+      if (rec.voiceMs >= 80) { rec.phase = 'speak'; rec.silenceMs = 0; setRecUI('speak'); setStatus('…'); }
+      else if (el > thr.arm + thr.noVoice) return cancelRecording('Keine Stimme gehört – nochmal tippen und sprechen.');
+    } else if (rec.phase === 'speak') {
+      rec.silenceMs = db < rec.baseDb + 6 ? rec.silenceMs + dtMs : 0;
+      if (rec.silenceMs >= thr.silence || el > thr.arm + thr.max) return finishRecording(true);
+    }
+    rec.raf = requestAnimationFrame(loop);
+  };
+  rec.raf = requestAnimationFrame(loop);
+}
+function teardown() { cancelAnimationFrame(rec.raf); rec.nodes.forEach((n) => { try { n.disconnect(); } catch (e) { /* ok */ } }); }
+function cancelRecording(msg) { teardown(); rec = null; setRecUI('idle'); setStatus(msg); }
+async function finishRecording() {
+  const r = rec; teardown(); rec = null; setRecUI('busy'); setStatus('');
+  try {
+    const raw = new Float32Array(r.chunks.reduce((n, c) => n + c.length, 0)); let o = 0;
+    for (const c of r.chunks) { raw.set(c, o); o += c.length; }
+    const samples = await resampleTo(raw, r.sr, ANALYSIS_SR);
+    const t = analyzeTake(samples, ANALYSIS_SR, SETTINGS), j = judge(t, cur, LIMITS);
+    lastResult = { t, j }; showResult(t, j);
+  } catch (e) { console.error(e); showBanner('Auswertung fehlgeschlagen: ' + (e.message || e)); }
+  setRecUI('idle');
+}
+
+// ---------- Ergebnis ----------
+const TITLES = { fast: 'Zu schnell', short: 'Etwas zu kurz gedehnt', long: 'Zu langsam / zu lang', whole: 'Ganzes Wort gedehnt', rest: 'Rest des Wortes fehlt',
+  restslow: 'Rest in Zeitlupe', flux: 'Übergänge zu zackig', break: 'Pause im Wort', onset: 'Einsatz zu hart' };
+function showResult(t, j) {
+  $('fb').hidden = false;
+  const bad = j.items.filter((i) => !i.ok), good = j.items.filter((i) => i.ok);
+  const v = $('verdict'); v.className = 'verdict ' + (j.pass ? 'ok' : 'bad');
+  v.textContent = j.pass ? 'Sehr gut prolongiert ✓' : (bad[0].key && TITLES[bad[0].key]) || 'Nochmal versuchen';
+  const ul = $('items'); ul.textContent = '';
+  [...bad, ...good].forEach((i) => { const li = document.createElement('li'); li.className = i.ok ? 'ok' : 'bad'; li.textContent = i.text; ul.append(li); });
+  drawPlot(t);
+  const rows = t.valid ? [['Dehnung der ersten Silbe', fmt(t.slowDur, 2) + ' s'], ['Rest danach', fmt(t.restDur, 2) + ' s'], ['Klangänderung beim Dehnen', t.slowFlux == null ? '–' : Math.round(t.slowFlux) + ' dB/s'],
+    ['Klangänderung im Rest', t.restFlux == null ? '–' : Math.round(t.restFlux) + ' dB/s'], ['Anstieg am Anfang', Math.round(t.rise * 1000) + ' ms'], ['Anfangsspitze', t.overshoot == null ? '–' : fmt(t.overshoot) + ' dB'],
+    ['Stimme gesamt', fmt(t.voiced, 2) + ' s'], ['Abstand Stimme/Rauschen', Math.round(t.snr) + ' dB']] : [['Keine Messwerte', t.reason || '']];
+  $('values').innerHTML = rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+  $('again').textContent = j.pass ? 'Noch einmal' : 'Nochmal versuchen';
+  $('next').textContent = j.pass ? 'Weiter ▸' : 'Überspringen ▸';
+  $('next').className = 'btn' + (j.pass ? ' primary' : '');
+  $('again').className = 'btn' + (j.pass ? '' : ' primary');
+  $('fb').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  clearTimeout(autoTimer); $('countdown').textContent = '';
+  if (j.pass) { doneCount++; $('progress').textContent = `Geschafft: ${doneCount}`; let left = LIMITS.AUTO_NEXT_SEC;
+    const tick = () => { $('countdown').textContent = left > 0 ? `Nächstes Wort in ${left} …` : ''; if (left-- <= 0) { goNext(); return; } autoTimer = setTimeout(tick, 1000); }; tick(); }
+}
+function goNext() { clearTimeout(autoTimer); nextWord(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+$('next').addEventListener('click', goNext);
+$('again').addEventListener('click', () => { clearTimeout(autoTimer); $('countdown').textContent = ''; $('fb').hidden = true; window.scrollTo({ top: 0, behavior: 'smooth' }); startRecording(); });
+
+function drawPlot(t) {
+  const c = $('plot'), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement), col = (n) => css.getPropertyValue(n).trim();
+  if (!t.valid) { g.fillStyle = col('--muted'); g.font = '14px system-ui'; g.textAlign = 'center'; g.fillText('keine auswertbare Stimme', W / 2, H / 2); return; }
+  const padL = 6, padR = 6, top = 8, bot = 22, tMin = -0.3, tMax = Math.max(t.tOff - t.tOn + 0.3, LIMITS.SLOW_MAX + 0.3);
+  const X = (s) => padL + ((s - tMin) / (tMax - tMin)) * (W - padL - padR), yb = H - bot;
+  const Y = (a) => yb - clamp(a / t.Amax, 0, 1.05) * (yb - top);
+  const slowEnd = t.tSlowEnd - t.tOn, off = t.tOff - t.tOn;
+  g.fillStyle = col('--target'); g.fillRect(X(LIMITS.SLOW_MIN), top, X(LIMITS.SLOW_MAX) - X(LIMITS.SLOW_MIN), yb - top);
+  g.fillStyle = col('--slow'); g.fillRect(X(0), top, X(slowEnd) - X(0), yb - top);
+  if (off - slowEnd > 0.1) { g.fillStyle = col('--rest'); g.fillRect(X(slowEnd), top, X(off) - X(slowEnd), yb - top); }
+  g.strokeStyle = col('--muted'); g.lineWidth = 1; g.beginPath(); g.moveTo(X(0), top); g.lineTo(X(0), yb); g.stroke();
+  g.strokeStyle = col('--accent'); g.lineWidth = 2; g.beginPath(); let st = false;
+  for (let i = 0; i < t.n; i++) { const s = t.t0 + i * t.dt - t.tOn; if (s < tMin || s > tMax) continue; if (!st) { g.moveTo(X(s), Y(t.A[i])); st = true; } else g.lineTo(X(s), Y(t.A[i])); }
+  g.stroke();
+  g.fillStyle = col('--muted'); g.font = '11px system-ui'; g.textAlign = 'center';
+  for (let s = 0; s <= tMax; s += 1) g.fillText(s + ' s', X(s), H - 6);
+}
+window.addEventListener('resize', () => { if (lastResult && !$('fb').hidden) drawPlot(lastResult.t); });
+
+// ---------- Einstellungen ----------
+function renderRef() {
+  const rows = Object.values(REFERENCE).map((r) => `<tr><td>${r.label}</td><td>${r.v.map((x) => fmt(x, Math.abs(x) < 10 && x % 1 ? 1 : 0)).join(' / ')}</td></tr>`);
+  $('refTable').innerHTML = '<tr><th>aus der CD gemessen</th><th>min / Mitte / max</th></tr>' + rows.join('') +
+    `<tr><th>Grenzwerte (LIMITS)</th><th></th></tr><tr><td>Dehnung erste Silbe</td><td>${fmt(LIMITS.SLOW_MIN)}–${fmt(LIMITS.SLOW_MAX)} s</td></tr>
+     <tr><td>Rest pro Silbe höchstens</td><td>${fmt(LIMITS.REST_SYL_MAX_SEC)} s</td></tr><tr><td>harter Einsatz ab</td><td>&gt; ${LIMITS.OVERSHOOT_HARD_DB} dB Anfangsspitze</td></tr>`;
+}
+$('wordsText').value = store.get('dehn_words', WORDS_DEFAULT).split('\n').join('\n');
+$('saveWords').addEventListener('click', () => { store.set('dehn_words', $('wordsText').value); loadWords(); deck = []; nextWord(); showBanner(''); });
+$('resetWords').addEventListener('click', () => { $('wordsText').value = WORDS_DEFAULT; store.set('dehn_words', WORDS_DEFAULT); loadWords(); deck = []; nextWord(); });
+$('shuffle').addEventListener('change', () => { deck = []; });
+renderRef(); loadWords(); nextWord(); setRecUI('idle');
+window.__app = { cur: () => cur, last: () => lastResult, words: () => words };   // nur zum Testen
+</script>
+</body>
+</html>
