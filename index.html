@@ -570,7 +570,7 @@ function showResult(t, j) {
   if (t.valid) requestAnimationFrame(() => drawPlot(t, j, cur));
 }
 $('next').addEventListener('click', nextWord);
-$('again').addEventListener('click', () => { show('screenMain'); setStatus(''); });
+$('again').addEventListener('click', () => { show('screenMain'); setStatus(''); startRecording(); });   // direkt wieder aufnehmen
 
 // Zielkurve: so müsste es bei dir aussehen – Dauer in den Zielbereich, leise anfangen, gleichmäßig lauter werden (Anstieg wie im CD-Vorbild)
 function targetCurve(t, j, word) {
