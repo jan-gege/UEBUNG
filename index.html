@@ -567,7 +567,7 @@ function wordCheck(t, word, L) {
   const endStrong = /(sch|ch|s|ß|f|z|x)$/.test(lastG), endVoiced = /[aeiouäöüylrmn]$/.test(lastG);
   if (endStrong && sh.post.dur < L.WORD_NOISE_MIN_SEC) problems.push('Ende');
   if (endVoiced && strongNoise(sh.post)) problems.push('Ende');
-  if (word.syl === 1 && sh.voicedRest > L.WORD_EXTRA_SYL_SEC) problems.push('Silben');
+  if (word.syl === 1 && t.slowDur >= L.SLOW_MIN * L.TOO_FAST_FRACTION && sh.voicedRest > L.WORD_EXTRA_SYL_SEC) problems.push('Silben');   // nur wenn wirklich gedehnt wurde
   return problems.length ? { problems, shape: sh } : null;
 }
 // ==== CORE END
