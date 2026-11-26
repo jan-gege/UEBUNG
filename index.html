@@ -124,17 +124,17 @@ const REF_WORDS = {"fra":{"slowDur":1.79,"voiced":1.89,"start":-6.1,"end":5.4,"s
    GRENZWERTE für die Bewertung – hier anpassen
    ========================================================================== */
 const LIMITS = {
-  // --- Dauer der gedehnten ersten Silbe ---
-  WORD_ONLY_WIDEN: false,   // Wörter mit eigenem CD-Vorbild: Bereich auch verengen (streng) oder nur erweitern (normal)
-  WORD_LO_FACTOR: 0.8,      // … Mindestdauer = 80 % des Vorbilds
-  WORD_HI_FACTOR: 1.35,     // … Höchstdauer = 135 % des Vorbilds
-  ABS_MIN_SEC: 1.2, ABS_MAX_SEC: 4.5,   // absolute Grenzen für wortspezifische Bereiche
-  SLOW_MIN: 1.6,            // Wörter ohne eigenes Vorbild: mindestens so lange (s)   [CD: min 1,63]
-  SLOW_MAX: 2.9,            // … höchstens so lange (s)                                 [CD: max 2,74]
+  // --- Dauer der gedehnten ersten Silbe (bewusst großzügig) ---
+  WORD_ONLY_WIDEN: true,    // Wörter mit eigenem CD-Vorbild: Bereich darf nur größer werden, nie enger
+  WORD_LO_FACTOR: 0.7,
+  WORD_HI_FACTOR: 1.6,
+  ABS_MIN_SEC: 0.8, ABS_MAX_SEC: 4.5,
+  SLOW_MIN: 1.0,            // ab 1 s gilt es als gedehnt   [normal gesprochene Silben auf der CD: 0,53–0,82 s]
+  SLOW_MAX: 4.5,            // erst über 4,5 s „zu lang“
+  WHOLE_WORD_SEC: 3.0,      // mehrsilbiges Wort: über 3 s am Stück ohne normalen Rest = ganzes Wort gedehnt
   TOO_FAST_FRACTION: 0.5,   // unter 50 % der Mindestdauer gilt es als „zu schnell“ (fast normales Tempo)
   // --- Klang und Rest des Wortes ---
-  SLOW_FLUX_OK: 55,         // Klangänderung in der Dehnung höchstens (dB/s)   [CD: max 53; normal gesprochen ab 76]
-  REST_MIN_SEC: 0.15,       // mehrsilbige Wörter: Rest mindestens so lang pro weiterer Silbe (s)
+  REST_MIN_SEC: 0.25,       // mehrsilbige Wörter: Rest mindestens so lang pro weiterer Silbe (s)
   REST_FLUX_MIN: 70,        // … und mindestens so „schnell“ gesprochen (dB/s)
   REST_SYL_MAX_SEC: 0.9,    // … aber höchstens so lang pro Silbe (sonst „Zeitlupe“)
   BREAK_FAIL_SEC: 0.5,      // Stille mitten im Wort ab so vielen Sekunden = abgesetzt
@@ -157,7 +157,7 @@ const LIMITS = {
   WORD_EXTRA_SYL_SEC: 0.3,                   // einsilbiges Wort: stimmhafter Rest danach höchstens so lang
 };
 // Nachsichtigere Stufe („normal“): überschreibt einzelne Werte von oben
-const LIMITS_NORMAL = { WORD_ONLY_WIDEN: true, WORD_LO_FACTOR: 0.7, WORD_HI_FACTOR: 1.6, SLOW_MIN: 1.5, SLOW_MAX: 3.0, SLOW_FLUX_OK: 60, START_HARD_DB: 7, SLOPE_MIN: null,
+const LIMITS_NORMAL = { SLOW_MIN: 0.8, SLOW_MAX: 5.0, ABS_MAX_SEC: 5.0, START_HARD_DB: 7, SLOPE_MIN: null,
   PITCH_STEPS_MAX: 1, PITCH_WOBBLE_MAX: 0.3, PITCH_DRIFT_MIN_ST: -8, VOICE_BREAK_MAX_SEC: 0.35, ROUGH_MAX: 1.2 };
 const LIMITS_STRICT = Object.assign({}, LIMITS);   // Sicherungskopie der strengen Werte
 function applyStrictness(mode) { Object.assign(LIMITS, LIMITS_STRICT, mode === 'normal' ? LIMITS_NORMAL : {}); }
@@ -410,17 +410,13 @@ function judge(t, word, L) {
   if (wc) { const why = { Anfang: 'der Anfang passt nicht', Ende: 'das Ende passt nicht', Silben: 'zu viele Silben' }; items.push({ ok: false, key: 'word', text: `Das klang nicht wie „${word.text}“ (${wc.problems.map((p) => why[p]).join(', ')}). Sag genau das angezeigte Wort.` }); }
   let whole = false;
   // 1. Dehnung der ersten Silbe: Länge
-  if (N >= 2 && t.slowDur > hi) { whole = true; items.push({ ok: false, key: 'whole', text: `Ganzes Wort gedehnt (${f(t.slowDur)} s am Stück). Nur die erste Silbe dehnen.` }); }
+  const restMissing = N >= 2 && (t.restDur < L.REST_MIN_SEC * (N - 1) || (t.restFlux != null && t.restFlux < L.REST_FLUX_MIN && t.restDur > 0.3));
+  if (N >= 2 && (t.slowDur > hi || (t.slowDur > L.WHOLE_WORD_SEC && restMissing))) { whole = true; items.push({ ok: false, key: 'whole', text: `Ganzes Wort gedehnt (${f(t.slowDur)} s am Stück). Nur die erste Silbe dehnen.` }); }
   else if (t.slowDur < lo * L.TOO_FAST_FRACTION) items.push({ ok: false, key: 'fast', text: `Fast normales Sprechtempo, kaum gedehnt. ${tgt}.` });
   else if (t.slowDur < lo) items.push({ ok: false, key: 'short', text: `Zu kurz gedehnt (${f(t.slowDur)} s). ${tgt}.` });
   else if (t.slowDur > hi) items.push({ ok: false, key: 'long', text: `Zu lang gedehnt (${f(t.slowDur)} s). ${tgt}.` });
   else items.push({ ok: true, key: 'dur', text: `Dehnung passt (${f(t.slowDur)} s).` });
-  // 2. Tempo der Mundbewegung in der gedehnten Stelle
-  const slowFlux = t.slowFlux;
-  if (slowFlux != null && t.slowDur >= lo * L.TOO_FAST_FRACTION) {
-    if (slowFlux > L.SLOW_FLUX_OK) items.push({ ok: false, key: 'flux', text: 'Mundbewegung zu zackig. Fließender von Laut zu Laut übergehen.' });
-    else items.push({ ok: true, key: 'flux', text: 'Übergänge zwischen den Lauten fließend.' });
-  }
+  // (Prüfung „Mundbewegung zu zackig“ entfernt: zu unzuverlässig)
   // 3. Rest des Wortes (nur bei mehrsilbigen Wörtern): normal schnell
   if (N >= 2 && !whole) {
     const per = t.restDur / (N - 1);
@@ -800,7 +796,7 @@ function issueWhere(item, t, ch, word) {
 // Zielkurve: so müsste es bei dir aussehen – Dauer in den Zielbereich, leise anfangen, gleichmäßig lauter werden (Anstieg wie im CD-Vorbild)
 function targetCurve(t, j, word) {
   const lo = j.lo, hi = j.hi; let Tend = t.slowDur;
-  if (Tend < lo) Tend = lo + 0.25 * (hi - lo); else if (Tend > hi) Tend = hi - 0.25 * (hi - lo);
+  if (Tend < lo || Tend > hi) Tend = clamp(word.ref ? word.ref.slowDur : 2.0, lo, hi);   // typische Dehnung von der CD
   const s = word.ref ? clamp(word.ref.slope, 3, 8) : 5;                       // dB pro Sekunde
   let pk = 0; for (let i = 0; i < t.n; i++) { const tt = t.t0 + i * t.dt; if (tt >= t.tOn && tt <= t.tSlowEnd) pk = Math.max(pk, t.A[i]); }
   const P = t.slowDur >= 0.5 * lo ? clamp(pk / t.Amax, 0.5, 1) : 1, pts = [];   // zu kurze Dehnung: Ziel auf deine höchste Lautstärke beziehen
