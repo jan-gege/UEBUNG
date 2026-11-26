@@ -169,6 +169,8 @@ const SETTINGS = {
   MIN_SNR_DB: 12, ONSET_ABOVE_FLOOR_DB: 8, ONSET_HOLD_SEC: 0.05, BAND_MIN_SNR: 4,
   BREAK_SEC: 0.2, BREAK_ABOVE_FLOOR_DB: 3,
   PITCH_MIN_HZ: 70, PITCH_MAX_HZ: 400, VOICED_MIN_R: 0.55, VOICED_GAP_SEC: 0.06, VOICED_MIN_SEC: 0.5, PROFILE_TRIM_DB: 15, YIN_THRESHOLD: 0.15, PITCH_STEP_ST: 3, PITCH_SKIP_SEC: 0.2, PITCH_SKIP_END_SEC: 0.2,
+  REGION_START_DB: 14, REGION_HOLD_DB: 8, REGION_EDGE_DB: 5, REGION_EDGE_SEC: 1.5, REGION_GAP_SEC: 0.4, REGION_MIN_SEC: 0.2, REGION_PAD_SEC: 0.3,   // Wort in der Aufnahme finden
+  REC_SKIP_MS: 450, REC_ARM_MS: 700, REC_SILENCE_MS: 1200, REC_MIN_VOICE_MS: 500, REC_MAX_SPEAK_MS: 8000, REC_HIGHPASS_HZ: 60,
   FLUX_SPAN_SEC: 0.04, FLUX_MEDIAN_SEC: 0.4, FLUX_GAP_SEC: 0.25, SLOW_FLUX_MAX: 85, SLOW_RUN_MIN_SEC: 0.4, SLOW_RUN_LONG_SEC: 0.6,
   RISE_LOW: 0.10, RISE_HIGH: 0.90, ATTACK_WINDOW_SEC: 0.5,
 };
@@ -570,6 +572,36 @@ function wordCheck(t, word, L) {
   if (word.syl === 1 && t.slowDur >= L.SLOW_MIN * L.TOO_FAST_FRACTION && sh.voicedRest > L.WORD_EXTRA_SYL_SEC) problems.push('Silben');   // nur wenn wirklich gedehnt wurde
   return problems.length ? { problems, shape: sh } : null;
 }
+
+// ---------- Wo in der Aufnahme steckt das Wort? ----------
+// Sucht den stärksten zusammenhängenden Sprachabschnitt; kurze Geräusche (Klicks, Klopfen) und alles davor/danach fallen weg.
+function findWordRegion(x, sr, S) {
+  const hop = Math.round(sr * 0.01), n = Math.floor(x.length / hop); if (n < 30) return null;
+  const raw = new Float32Array(n), env = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0; for (let k = 0; k < hop; k++) { const v = x[i * hop + k]; s += v * v; } raw[i] = toDb(Math.sqrt(s / hop)); }
+  for (let i = 0; i < n; i++) { let s = 0, c = 0; for (let k = Math.max(0, i - 2); k <= Math.min(n - 1, i + 2); k++) { s += raw[k]; c++; } env[i] = s / c; }   // 50 ms geglättet
+  const floor = percentile(env, 10), on = floor + S.REGION_START_DB, hold = floor + S.REGION_HOLD_DB, gap = Math.round(S.REGION_GAP_SEC / 0.01), runs = [];
+  let a = -1, last = -1, active = false;
+  for (let i = 0; i <= n; i++) {
+    const v = i < n ? env[i] : -999;
+    if (!active && v >= on) { active = true; if (a < 0 || i - last > gap) { if (a >= 0) runs.push([a, last]); a = i; } }
+    if (active) { if (v >= hold) last = i; else active = false; }
+  }
+  if (a >= 0) runs.push([a, last]);
+  let best = null, bestScore = 0;
+  for (const [s, e] of runs) {
+    if ((e - s + 1) * 0.01 < S.REGION_MIN_SEC) continue;            // zu kurz: Klick oder Klopfen
+    let sc = 0; for (let i = s; i <= e; i++) if (env[i] >= hold) sc += env[i] - hold;
+    if (sc > bestScore) { bestScore = sc; best = [s, e]; }
+  }
+  if (!best) return null;
+  // leise Ränder dazunehmen (weicher Einsatz, leises f/s), höchstens REGION_EDGE_SEC und nicht über Lücken hinweg
+  let s0 = best[0], e0 = best[1]; const ext = Math.round(S.REGION_EDGE_SEC / 0.01), soft = floor + S.REGION_EDGE_DB;
+  const grow = (i, dir) => { let dips = 0, k = 0, j = i; while (k++ < ext) { const nx = j + dir; if (nx < 0 || nx >= n) break; if (env[nx] >= soft) { dips = 0; j = nx; } else if (++dips > 5) break; else j = nx; } return j - dir * Math.min(dips, 5); };
+  s0 = grow(s0, -1); e0 = grow(e0, 1);
+  const pad = Math.round(S.REGION_PAD_SEC / 0.01);
+  return { start: Math.max(0, (s0 - pad) * hop), end: Math.min(x.length, (e0 + 1 + pad) * hop), runs: runs.length };
+}
 // ==== CORE END
 
 /* ==========================================================================
@@ -642,13 +674,14 @@ async function startRecording() {
     showBanner('Mikrofon nicht verfügbar: ' + (e.name === 'NotAllowedError' ? 'Zugriff verweigert – in den Browser-Einstellungen erlauben.' : e.message)); return;
   }
   const ctx = ctx0; try { await resumed; } catch (e) { /* weiter */ }
-  const src = ctx.createMediaStreamSource(micStream), an = ctx.createAnalyser(), mute = ctx.createGain(), proc = ctx.createScriptProcessor(4096, 1, 1);
-  an.fftSize = 1024; mute.gain.value = 0; const chunks = [];
-  proc.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-  src.connect(an); src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
-  rec = { phase: 'arm', t0: performance.now(), chunks, nodes: [src, proc, mute], sr: ctx.sampleRate, base: [], voiceMs: 0, silenceMs: 0, last: performance.now(), baseDb: -70 };
+  const src = ctx.createMediaStreamSource(micStream), hp = ctx.createBiquadFilter(), an = ctx.createAnalyser(), mute = ctx.createGain(), proc = ctx.createScriptProcessor(4096, 1, 1);
+  hp.type = 'highpass'; hp.frequency.value = SETTINGS.REC_HIGHPASS_HZ;      // Brummen, Rumpeln, Tischklopfen (tiefe Frequenzen) weg
+  an.fftSize = 1024; mute.gain.value = 0; const chunks = [], t0 = performance.now();
+  proc.onaudioprocess = (e) => { if (performance.now() - t0 >= SETTINGS.REC_SKIP_MS) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };   // erste ~0,5 s (Klick) verwerfen
+  src.connect(hp); hp.connect(an); hp.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  rec = { phase: 'arm', t0, chunks, nodes: [src, hp, proc, mute], sr: ctx.sampleRate, base: [], voiceMs: 0, silenceMs: 0, voicedTotal: 0, speakStart: 0, last: performance.now(), baseDb: -70 };
   setRecUI('arm'); setStatus('Kurz still sein …');
-  const buf = new Float32Array(an.fftSize), thr = { arm: 500, noVoice: 20000, max: 15000, silence: 1000 };
+  const buf = new Float32Array(an.fftSize), thr = { arm: SETTINGS.REC_ARM_MS, noVoice: 20000, silence: SETTINGS.REC_SILENCE_MS, minVoice: SETTINGS.REC_MIN_VOICE_MS, maxSpeak: SETTINGS.REC_MAX_SPEAK_MS };
   const loop = () => {
     if (!rec) return;
     const now = performance.now(), dtMs = now - rec.last; rec.last = now;
@@ -656,15 +689,19 @@ async function startRecording() {
     const db = 20 * Math.log10(Math.sqrt(s / buf.length) + 1e-6), el = now - rec.t0;
     $('meter').style.width = clamp((db + 60) / 50, 0, 1) * 100 + '%';
     if (rec.phase === 'arm') {
-      rec.base.push(db);
-      if (el >= thr.arm) { const okv = rec.base.filter((v) => v > -100); rec.baseDb = okv.length ? percentile(okv, 30) : -70; /* Anfangs-Nullen ignorieren, robust falls man schon spricht */ rec.phase = 'listen'; setRecUI('listen'); setStatus('Sprich das Wort, ich höre, wann du fertig bist.'); }
+      if (el >= SETTINGS.REC_SKIP_MS) rec.base.push(db);              // Klick nicht in die Rauschmessung
+      if (el >= thr.arm) { const okv = rec.base.filter((v) => v > -100); rec.baseDb = okv.length ? percentile(okv, 40) : -70; /* Anfangs-Nullen ignorieren, robust falls man schon spricht */ rec.phase = 'listen'; setRecUI('listen'); setStatus('Sprich das Wort, ich höre, wann du fertig bist.'); }
     } else if (rec.phase === 'listen') {
       rec.voiceMs = db > rec.baseDb + 10 ? rec.voiceMs + dtMs : 0;
-      if (rec.voiceMs >= 80) { rec.phase = 'speak'; rec.silenceMs = 0; setRecUI('speak'); setStatus(''); }
+      if (rec.voiceMs >= 150) { rec.phase = 'speak'; rec.silenceMs = 0; rec.voicedTotal = rec.voiceMs; rec.speakStart = now; setRecUI('speak'); setStatus(''); }
       else if (el > thr.arm + thr.noVoice) return cancelRecording('Keine Stimme gehört. Nochmal tippen und sprechen.');
     } else if (rec.phase === 'speak') {
-      rec.silenceMs = db < rec.baseDb + 6 ? rec.silenceMs + dtMs : 0;
-      if (rec.silenceMs >= thr.silence || el > thr.arm + thr.max) return finishRecording();
+      if (db > rec.baseDb + 10) rec.voicedTotal += dtMs;
+      rec.silenceMs = db < rec.baseDb + 9 ? rec.silenceMs + dtMs : Math.max(0, rec.silenceMs - 3 * dtMs);   // kurzes Rauschen setzt die Stille nicht ganz zurück
+      if (rec.silenceMs >= thr.silence) {
+        if (rec.voicedTotal >= thr.minVoice) return finishRecording();
+        rec.phase = 'listen'; rec.voiceMs = 0; setRecUI('listen');     // war nur ein kurzes Geräusch: weiter zuhören
+      } else if (now - rec.speakStart > thr.maxSpeak) return finishRecording();
     }
     rec.raf = requestAnimationFrame(loop);
   };
@@ -677,7 +714,8 @@ async function finishRecording() {
   try {
     const raw = new Float32Array(r.chunks.reduce((n, c) => n + c.length, 0)); let o = 0;
     for (const c of r.chunks) { raw.set(c, o); o += c.length; }
-    const samples = await resampleTo(raw, r.sr, ANALYSIS_SR);
+    const all = await resampleTo(raw, r.sr, ANALYSIS_SR), reg = findWordRegion(all, ANALYSIS_SR, SETTINGS);
+    const samples = reg ? all.subarray(reg.start, reg.end) : all;      // nur der Abschnitt mit dem Wort, Rest abgeschnitten
     const t = analyzeTake(samples, ANALYSIS_SR, SETTINGS), j = judge(t, cur, LIMITS);
     showResult(t, j);
   } catch (e) { console.error(e); showBanner('Auswertung fehlgeschlagen: ' + (e.message || e)); }
