@@ -150,11 +150,6 @@ const LIMITS = {
   PITCH_DRIFT_MIN_ST: -5.5, // Absinken der Tonhöhe zum Ende (Luft wird knapp), Halbtöne    [CD: kleinster Wert −3,7]
   VOICE_BREAK_MAX_SEC: 0.2, // Stimme setzt länger als so viele s aus = Stimmabbruch        [CD: max 0,18]
   ROUGH_MAX: 0.8,           // Ruckeln der Lautstärke höchstens (dB)                       [CD: max 0,50]
-  // --- Passt das Wort? (grobe Lautstruktur) ---
-  WORD_NOISE_SEC: 0.25, WORD_NOISE_HF: 0.3,  // unerwartetes Rauschen (sch/s/f) am Anfang oder Ende: so lang und so hell
-  WORD_NOISE_MIN_SEC: 0.03,                  // erwarteter Rausch-Endlaut (ch, sch, s, f, z) mindestens so lang
-  WORD_VOWEL_PRE_SEC: 0.25,                  // Wort mit Vokal-Anfang: Rauschen davor höchstens so lang
-  WORD_EXTRA_SYL_SEC: 0.3,                   // einsilbiges Wort: stimmhafter Rest danach höchstens so lang
 };
 // Nachsichtigere Stufe („normal“): überschreibt einzelne Werte von oben
 const LIMITS_NORMAL = { SLOW_MIN: 0.8, SLOW_MAX: 5.0, ABS_MAX_SEC: 5.0, START_HARD_DB: 7, SLOPE_MIN: null,
@@ -405,9 +400,6 @@ function judge(t, word, L) {
     return { pass: false, fatal: true, lo, hi, items: [{ ok: false, text: m[t.reason] || m.short }] };
   }
   const tgt = `Ziel${ref ? ' für dieses Wort' : ''}: ${f(lo)}–${f(hi)} s`;
-  // 0. Passt das Wort überhaupt? (grobe Lautstruktur, keine Spracherkennung)
-  const wc = word.text ? wordCheck(t, word, L) : null;
-  if (wc) { const why = { Anfang: 'der Anfang passt nicht', Ende: 'das Ende passt nicht', Silben: 'zu viele Silben' }; items.push({ ok: false, key: 'word', text: `Das klang nicht wie „${word.text}“ (${wc.problems.map((p) => why[p]).join(', ')}). Sag genau das angezeigte Wort.` }); }
   let whole = false;
   // 1. Dehnung der ersten Silbe: Länge
   const restMissing = N >= 2 && (t.restDur < L.REST_MIN_SEC * (N - 1) || (t.restFlux != null && t.restFlux < L.REST_FLUX_MIN && t.restDur > 0.3));
@@ -538,35 +530,6 @@ function alignWord(take, text) {
   for (let j = m; j >= 1; j--) { const d = bk[j][i]; seg.unshift({ g: ph[j - 1].g, c: ph[j - 1].c, t0: f.t0 + (iA + (i - d) * step) * f.dt, t1: f.t0 + (iA + i * step) * f.dt }); i -= d; }
   const conf = 1 - dp[m][nf] / nf;
   return { seg, conf };
-}
-
-// ---------- Passt das gesagte Wort zum angezeigten? ----------
-// Ohne Spracherkennung: Vergleich der groben Lautstruktur (Anfangslaut rauschend/stimmhaft, Endlaut, Silbenzahl).
-function wordShape(t) {
-  const f = t.feat; if (!t.valid || !f) return null;
-  const i0 = Math.round((t.tOn - f.t0) / f.dt), i1 = Math.round((t.tOff - f.t0) / f.dt), thrE = t.floorDb + 6;
-  let a = i0; const lim = Math.max(0, i0 - Math.round(0.8 / f.dt)); while (a > lim && f.env[a - 1] >= t.floorDb + 4) a--;
-  let vFirst = -1; for (let i = a; i <= i1; i++) if (f.voiced[i] && f.env[i] >= t.peakDb - 20) { vFirst = i; break; }
-  let vLast = -1; for (let i = Math.min(f.n - 1, i1 + Math.round(0.3 / f.dt)); i >= a; i--) if (f.voiced[i] && f.env[i] >= t.peakDb - 20) { vLast = i; break; }
-  if (vFirst < 0 || vLast < vFirst) return null;
-  const noise = (from, to) => { let n = 0, hf = 0; for (let i = from; i <= to; i++) if (!f.voiced[i] && f.env[i] >= thrE) { n++; hf += f.hfr[i]; } return { dur: n * f.dt, hf: n ? hf / n : 0 }; };
-  const pre = noise(a, vFirst - 1), post = noise(vLast + 1, Math.min(f.n - 1, i1 + Math.round(0.3 / f.dt)));
-  const iSE = Math.round((t.tSlowEnd - f.t0) / f.dt); let vr = 0; for (let i = iSE + 1; i <= vLast; i++) if (f.voiced[i] && f.env[i] >= t.peakDb - 25) vr++;
-  return { pre, post, voicedRest: vr * f.dt };
-}
-function wordCheck(t, word, L) {
-  const sh = wordShape(t); if (!sh) return null;
-  const ph = wordPhones(word.text); if (!ph.length) return null;
-  const first = ph[0], lastG = word.text.toLowerCase(), problems = [];
-  const strongStart = first.c === 'F' || (first.c === 'P' && ph[1] && ph[1].c === 'F');           // f, s, sch, ch, z, pf …
-  const strongNoise = (n) => n.dur >= L.WORD_NOISE_SEC && n.hf >= L.WORD_NOISE_HF;
-  if (!strongStart && first.c !== 'P' && first.c !== 'H' && strongNoise(sh.pre)) problems.push('Anfang');
-  if (first.c === 'V' && sh.pre.dur >= L.WORD_VOWEL_PRE_SEC) problems.push('Anfang');
-  const endStrong = /(sch|ch|s|ß|f|z|x)$/.test(lastG), endVoiced = /[aeiouäöüylrmn]$/.test(lastG);
-  if (endStrong && sh.post.dur < L.WORD_NOISE_MIN_SEC) problems.push('Ende');
-  if (endVoiced && strongNoise(sh.post)) problems.push('Ende');
-  if (word.syl === 1 && t.slowDur >= L.SLOW_MIN * L.TOO_FAST_FRACTION && sh.voicedRest > L.WORD_EXTRA_SYL_SEC) problems.push('Silben');   // nur wenn wirklich gedehnt wurde
-  return problems.length ? { problems, shape: sh } : null;
 }
 
 // ---------- Wo in der Aufnahme steckt das Wort? ----------
