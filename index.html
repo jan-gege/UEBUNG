@@ -9,11 +9,11 @@
   :root {
     --bg: #f4f6fa; --card: #ffffff; --ink: #1b2331; --muted: #667389; --line: #dde2ea;
     --accent: #2563eb; --accent-ink: #fff; --ok: #1b8a4b; --okbg: #e3f5ea; --bad: #c2410c; --badbg: #fdeee3; --rec: #dc2626;
-    --target: #1b8a4b; --targetfill: rgba(27,138,75,.22);
+    --target: #1b8a4b; --targetfill: rgba(27,138,75,.22); --fast: #a16207; --fastbg: #fdf3d6;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#12161d; --card:#1b212b; --ink:#e8ecf3; --muted:#93a0b4; --line:#2b3441; --accent:#5b8def; --accent-ink:#0b1220;
-      --ok:#4cc17f; --okbg:#173325; --bad:#f0a24a; --badbg:#3a2a18; --rec:#ff6b5e; --target:#4cc17f; --targetfill:rgba(76,193,127,.25); }
+      --ok:#4cc17f; --okbg:#173325; --bad:#f0a24a; --badbg:#3a2a18; --rec:#ff6b5e; --target:#4cc17f; --targetfill:rgba(76,193,127,.25); --fast:#e8c25a; --fastbg:#3a3218; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -35,7 +35,13 @@
   #rec.listen { background: var(--ok); color: #fff; } #rec.speak { background: var(--rec); color: #fff; } #rec:disabled { opacity: .6; }
   .fbword { text-align: center; color: var(--muted); font-size: 1rem; margin-top: 6px; }
   .verdict { font-size: 1.4rem; font-weight: 800; padding: 10px 14px; border-radius: 12px; margin: 8px 0 6px; text-align: center; }
-  .verdict.ok { background: var(--okbg); color: var(--ok); } .verdict.bad { background: var(--badbg); color: var(--bad); }
+  .verdict.ok { background: var(--okbg); color: var(--ok); } .verdict.bad { background: var(--badbg); color: var(--bad); } .verdict.fast { background: var(--fastbg); color: var(--fast); }
+  .vals { text-align: center; font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; margin: -2px 0 8px; }
+  .titem { border-top: 1px solid var(--line); padding: 10px 0; } .titem .nm { font-size: .85rem; color: var(--muted); word-break: break-all; }
+  .titem input[type=text] { padding: 8px; margin: 6px 0; } .titem .res { font-size: .9rem; margin-top: 4px; }
+  .seg2 { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; } .seg2 button { font: inherit; font-size: .9rem; padding: 7px 12px; border: 0; background: var(--card); color: var(--muted); cursor: pointer; }
+  .seg2 button.on.k { background: var(--okbg); color: var(--ok); font-weight: 700; } .seg2 button.on.f { background: var(--badbg); color: var(--bad); font-weight: 700; }
+  .summary { font-weight: 700; margin: 10px 0; }
   .fbtext { min-height: 1.4em; text-align: center; font-size: .98rem; margin: 0 2px 6px; }
   canvas#plot { width: 100%; height: 240px; display: block; }
   .legend { display: flex; justify-content: center; gap: 16px; font-size: .85rem; color: var(--muted); margin: 4px 0 10px; }
@@ -71,6 +77,7 @@
     <div class="verdict" id="verdict"></div>
     <div class="fbtext" id="fbText"></div>
     <canvas id="plot"></canvas>
+    <div class="vals" id="vals"></div>
     <div class="legend"><span><i></i>Dein Verlauf</span><span id="legTarget"><i class="t"></i>So wäre es sehr gut</span><span id="legWhere" hidden><i class="w"></i>hier</span></div>
     <div class="row"><button class="btn" id="again">Nochmal versuchen</button><button class="btn" id="next">Überspringen ▸</button></div>
   </section>
@@ -83,6 +90,16 @@
     <textarea id="wordsText" spellcheck="false"></textarea>
     <div class="row" style="margin-top:10px"><button class="btn" id="resetWords">Zurücksetzen</button><button class="btn primary" id="saveWords">Speichern</button></div>
     <label class="small"><input type="checkbox" id="shuffle" checked> zufällige Reihenfolge</label>
+    <div class="row" style="margin-top:16px"><button class="btn" id="openTest">Testmodus: Aufnahmen prüfen</button></div>
+  </section>
+
+  <section id="screenTest" class="set" hidden>
+    <div class="row"><button class="btn" id="testBack">‹ Zurück</button></div>
+    <p class="small">Lade Aufnahmen hoch, ein Wort pro Datei. Trage das Wort ein (Silben mit |) und markiere, ob die Prolongation korrekt oder fehlerhaft ist. Dann „Auswerten“. Die Dateien bleiben auf diesem Gerät.</p>
+    <input type="file" id="testFiles" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" multiple>
+    <div id="testList"></div>
+    <div class="summary" id="testSummary"></div>
+    <div class="row"><button class="btn primary" id="testRun">Auswerten</button></div>
   </section>
 </main>
 
@@ -135,7 +152,7 @@ const LIMITS = {
   TOO_FAST_FRACTION: 0.5,   // unter 50 % der Mindestdauer gilt es als „zu schnell“ (fast normales Tempo)
   // --- Klang und Rest des Wortes ---
   REST_MIN_SEC: 0.25,       // mehrsilbige Wörter: Rest mindestens so lang pro weiterer Silbe (s)
-  REST_FLUX_MIN: 70,        // … und mindestens so „schnell“ gesprochen (dB/s)
+  REST_FLUX_MIN: 45,        // … und mit so viel Klangänderung (dB/s, reine Klangfarbe)
   REST_SYL_MAX_SEC: 0.9,    // … aber höchstens so lang pro Silbe (sonst „Zeitlupe“)
   BREAK_FAIL_SEC: 0.5,      // Stille mitten im Wort ab so vielen Sekunden = abgesetzt
   // --- Lautstärkeverlauf (nur stimmhafte Laute der Dehnung) ---
@@ -165,8 +182,10 @@ const SETTINGS = {
   BREAK_SEC: 0.2, BREAK_ABOVE_FLOOR_DB: 3,
   PITCH_MIN_HZ: 70, PITCH_MAX_HZ: 400, VOICED_MIN_R: 0.55, VOICED_GAP_SEC: 0.06, VOICED_MIN_SEC: 0.5, PROFILE_TRIM_DB: 15, YIN_THRESHOLD: 0.15, PITCH_STEP_ST: 3, PITCH_SKIP_SEC: 0.2, PITCH_SKIP_END_SEC: 0.2,
   REGION_START_DB: 14, REGION_HOLD_DB: 8, REGION_EDGE_DB: 5, REGION_EDGE_SEC: 1.5, REGION_GAP_SEC: 0.4, REGION_MIN_SEC: 0.2, REGION_PAD_SEC: 0.3,   // Wort in der Aufnahme finden
-  REC_SKIP_MS: 450, REC_ARM_MS: 700, REC_SILENCE_MS: 1200, REC_MIN_VOICE_MS: 500, REC_MAX_SPEAK_MS: 8000, REC_HIGHPASS_HZ: 60,
-  FLUX_SPAN_SEC: 0.04, FLUX_MEDIAN_SEC: 0.4, FLUX_GAP_SEC: 0.25, SLOW_FLUX_MAX: 85, SLOW_RUN_MIN_SEC: 0.4, SLOW_RUN_LONG_SEC: 0.6,
+  NOISE_REF_SEC: 0.5,          // Grundrauschen aus den ersten 0,5 s der Aufnahme
+  REC_VOICE_DB: 10, REC_SILENCE_DB: 9,   // Stimme = so viele dB über dem Grundrauschen, Stille = darunter
+  REC_SKIP_MS: 450, REC_ARM_MS: 950, REC_SILENCE_MS: 1200, REC_MIN_VOICE_MS: 500, REC_MAX_SPEAK_MS: 8000, REC_HIGHPASS_HZ: 60,
+  FLUX_SPAN_SEC: 0.04, FLUX_MEDIAN_SEC: 0.4, FLUX_GAP_SEC: 0.25, SLOW_FLUX_MAX: 55, SLOW_RUN_MIN_SEC: 0.4, SLOW_RUN_LONG_SEC: 0.6,
   RISE_LOW: 0.10, RISE_HIGH: 0.90, ATTACK_WINDOW_SEC: 0.5,
 };
 
@@ -260,13 +279,19 @@ function yinPitch(x, i0, sr, S) {
 }
 
 // Messung einer Aufnahme (oder eines Referenz-Abschnitts)
-function analyzeTake(x, sr, S) {
+function analyzeTake(x, sr, S, ref) {   // ref: optional die ersten 0,5 s der Aufnahme (nur Raumgeräusch) als Bezug für das Grundrauschen
   const fr = analyzeFrames(x, sr), n = fr.n;
   if (n < 20) return { valid: false, reason: 'short' };
   const env = new Float32Array(n); for (let i = 0; i < n; i++) env[i] = toDb(fr.rms[i]);
-  const peakDb = percentile(env, 99.5), floorDb = percentile(env, 5), snr = peakDb - floorDb;
-  const noise = noiseProfile(fr, Array.from(env, (v) => v <= floorDb + 6));
-  const base = { floorDb, peakDb, snr, dur: x.length / sr };
+  const peakDb = percentile(env, 99.5);
+  let floorDb = percentile(env, 5), noise = null, floorFromRef = false;
+  if (ref && ref.length >= FRAME_N * 3) {                       // Grundrauschen aus den ersten 0,5 s, falls dort wirklich nur Rauschen ist
+    const fr2 = analyzeFrames(ref, sr), e2 = Array.from(fr2.rms, toDb), fRef = median(e2);
+    if (fRef <= percentile(env, 20) + 3) { floorDb = fRef; noise = noiseProfile(fr2, e2.map(() => true)); floorFromRef = true; }
+  }
+  if (!noise) noise = noiseProfile(fr, Array.from(env, (v) => v <= floorDb + 6));
+  const snr = peakDb - floorDb;
+  const base = { floorDb, peakDb, snr, floorFromRef, dur: x.length / sr };
   if (snr < S.MIN_SNR_DB) return { valid: false, reason: 'quiet', ...base };
   const frames = (sec) => Math.round(sec / fr.dt), tOf = (i) => fr.t0 + i * fr.dt;
 
@@ -291,6 +316,8 @@ function analyzeTake(x, sr, S) {
   if (use.length < 4) use = Array.from({ length: NB }, (_, b) => b);
   const lv = new Float32Array(n * NB);
   for (let i = 0; i < n; i++) for (const b of use) lv[i * NB + b] = 10 * Math.log10(Math.max(fr.bands[i * NB + b] - noise[b], 0.3 * noise[b]) + 1e-20);
+  // nur die Klangfarbe zählt: Gesamtlautstärke je Rahmen abziehen (ein absichtlich ansteigender weicher Einsatz ist keine Klangänderung)
+  for (let i = 0; i < n; i++) { let m = 0; for (const b of use) m += lv[i * NB + b]; m /= use.length; for (const b of use) lv[i * NB + b] -= m; }
   const lvMean = (i, b) => { let s = 0, c = 0; for (let k = Math.max(0, i - 1); k <= Math.min(n - 1, i + 1); k++) { s += lv[k * NB + b]; c++; } return s / c; };
   const Dl = frames(S.FLUX_SPAN_SEC), flux = new Float32Array(n);
   for (let i = Dl; i < n - Dl; i++) { let a = 0; for (const b of use) { const d = lvMean(i + Dl, b) - lvMean(i - Dl, b); a += d * d; } flux[i] = Math.sqrt(a / use.length) / (2 * Dl * fr.dt); }
@@ -397,7 +424,7 @@ function judge(t, word, L) {
   }
   if (!t.valid) {
     const m = { quiet: 'Zu leise oder zu viel Rauschen → näher ans Mikrofon, etwas lauter sprechen.', novoice: 'Keine Stimme erkannt → nochmal versuchen.', short: 'Aufnahme zu kurz → nochmal versuchen.' };
-    return { pass: false, fatal: true, lo, hi, items: [{ ok: false, text: m[t.reason] || m.short }] };
+    return { pass: false, fatal: true, level: 'nochmal', lo, hi, items: [{ ok: false, text: m[t.reason] || m.short }] };
   }
   const tgt = `Ziel${ref ? ' für dieses Wort' : ''}: ${f(lo)}–${f(hi)} s`;
   let whole = false;
@@ -439,7 +466,11 @@ function judge(t, word, L) {
     if (p.breakMax > L.VOICE_BREAK_MAX_SEC) items.push({ ok: false, key: 'voicebreak', text: 'Stimme setzt zwischendurch aus. Durchgehend schwingen lassen.' });
     if (p.rough > L.ROUGH_MAX) items.push({ ok: false, key: 'rough', text: 'Lautstärke ruckelt. Gleichmäßig führen.' });
   }
-  return { pass: items.every((i) => i.ok), items, lo, hi };
+  const MAJOR = ['fast', 'whole', 'rest', 'break', 'hard', 'voicebreak'];
+  items.forEach((i) => { if (!i.ok) i.sev = MAJOR.includes(i.key) ? 'major' : 'minor'; });
+  const bad = items.filter((i) => !i.ok), level = !bad.length ? 'gut' : bad.some((i) => i.sev === 'major') ? 'nochmal' : 'fast';
+  bad.sort((a, b) => (a.sev === b.sev ? 0 : a.sev === 'major' ? -1 : 1));
+  return { pass: level === 'gut', level, items: [...bad, ...items.filter((i) => i.ok)], lo, hi };
 }
 
 
@@ -573,7 +604,7 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
 const showBanner = (m) => { $('banner').textContent = m; $('banner').hidden = !m; };
 const setStatus = (t) => { $('status').textContent = t; };
 function show(name) {
-  for (const s of ['screenMain', 'screenFb', 'screenSet']) $(s).hidden = s !== name;
+  for (const s of ['screenMain', 'screenFb', 'screenSet', 'screenTest']) $(s).hidden = s !== name;
   $('bar').hidden = name !== 'screenMain'; window.scrollTo(0, 0);
 }
 
@@ -649,14 +680,14 @@ async function startRecording() {
     $('meter').style.width = clamp((db + 60) / 50, 0, 1) * 100 + '%';
     if (rec.phase === 'arm') {
       if (el >= SETTINGS.REC_SKIP_MS) rec.base.push(db);              // Klick nicht in die Rauschmessung
-      if (el >= thr.arm) { const okv = rec.base.filter((v) => v > -100); rec.baseDb = okv.length ? percentile(okv, 40) : -70; /* Anfangs-Nullen ignorieren, robust falls man schon spricht */ rec.phase = 'listen'; setRecUI('listen'); setStatus('Sprich das Wort, ich höre, wann du fertig bist.'); }
+      if (el >= thr.arm) { const okv = rec.base.filter((v) => v > -100); rec.baseDb = okv.length ? percentile(okv, 50) : -70; /* Anfangs-Nullen ignorieren, robust falls man schon spricht */ rec.phase = 'listen'; setRecUI('listen'); setStatus('Sprich das Wort, ich höre, wann du fertig bist.'); }
     } else if (rec.phase === 'listen') {
-      rec.voiceMs = db > rec.baseDb + 10 ? rec.voiceMs + dtMs : 0;
+      rec.voiceMs = db > rec.baseDb + SETTINGS.REC_VOICE_DB ? rec.voiceMs + dtMs : 0;
       if (rec.voiceMs >= 150) { rec.phase = 'speak'; rec.silenceMs = 0; rec.voicedTotal = rec.voiceMs; rec.speakStart = now; setRecUI('speak'); setStatus(''); }
       else if (el > thr.arm + thr.noVoice) return cancelRecording('Keine Stimme gehört. Nochmal tippen und sprechen.');
     } else if (rec.phase === 'speak') {
-      if (db > rec.baseDb + 10) rec.voicedTotal += dtMs;
-      rec.silenceMs = db < rec.baseDb + 9 ? rec.silenceMs + dtMs : Math.max(0, rec.silenceMs - 3 * dtMs);   // kurzes Rauschen setzt die Stille nicht ganz zurück
+      if (db > rec.baseDb + SETTINGS.REC_VOICE_DB) rec.voicedTotal += dtMs;
+      rec.silenceMs = db < rec.baseDb + SETTINGS.REC_SILENCE_DB ? rec.silenceMs + dtMs : Math.max(0, rec.silenceMs - 3 * dtMs);   // kurzes Rauschen setzt die Stille nicht ganz zurück
       if (rec.silenceMs >= thr.silence) {
         if (rec.voicedTotal >= thr.minVoice) return finishRecording();
         rec.phase = 'listen'; rec.voiceMs = 0; setRecUI('listen');     // war nur ein kurzes Geräusch: weiter zuhören
@@ -673,35 +704,51 @@ async function finishRecording() {
   try {
     const raw = new Float32Array(r.chunks.reduce((n, c) => n + c.length, 0)); let o = 0;
     for (const c of r.chunks) { raw.set(c, o); o += c.length; }
-    const all = await resampleTo(raw, r.sr, ANALYSIS_SR), reg = findWordRegion(all, ANALYSIS_SR, SETTINGS);
-    const samples = reg ? all.subarray(reg.start, reg.end) : all;      // nur der Abschnitt mit dem Wort, Rest abgeschnitten
-    const t = analyzeTake(samples, ANALYSIS_SR, SETTINGS), j = judge(t, cur, LIMITS);
-    showResult(t, j);
+    const res = evaluateRecording(await resampleTo(raw, r.sr, ANALYSIS_SR), cur);
+    showResult(res.t, res.j);
   } catch (e) { console.error(e); showBanner('Auswertung fehlgeschlagen: ' + (e.message || e)); }
   setRecUI('idle');
 }
+
+// ---------- Auswertung einer Aufnahme ----------
+function normalizePeak(x) {                                          // Lautstärke auf den Spitzenwert der Aufnahme normieren
+  const hop = Math.round(ANALYSIS_SR * 0.01), r = [];
+  for (let i = 0; i + hop <= x.length; i += hop) { let s = 0; for (let k = 0; k < hop; k++) s += x[i + k] * x[i + k]; r.push(Math.sqrt(s / hop)); }
+  const pk = r.length ? percentile(r, 99.5) : 0; if (pk < 1e-5) return x;
+  const g = 0.3 / pk, y = new Float32Array(x.length); for (let i = 0; i < x.length; i++) y[i] = x[i] * g; return y;
+}
+function evaluateRecording(raw, word) {
+  const all = normalizePeak(raw), ref = all.subarray(0, Math.min(all.length, Math.round(SETTINGS.NOISE_REF_SEC * ANALYSIS_SR)));
+  const reg = findWordRegion(all, ANALYSIS_SR, SETTINGS), samples = reg ? all.subarray(reg.start, reg.end) : all;   // nur der Abschnitt mit dem Wort
+  const t = analyzeTake(samples, ANALYSIS_SR, SETTINGS, ref), j = judge(t, word, LIMITS);
+  return { t, j };
+}
+const valuesText = (t) => t.valid ? `Start ${fmt(t.tOn, 2)} s · Dehnung ${fmt(t.slowDur, 2)} s · Anstieg ${Math.round(t.rise * 1000)} ms` : 'keine auswertbare Stimme';
 
 // ---------- Rückmeldung ----------
 const TITLES = { fast: 'Zu schnell', short: 'Etwas zu kurz gedehnt', long: 'Zu lang gedehnt', whole: 'Ganzes Wort gedehnt', rest: 'Rest des Wortes fehlt',
   restslow: 'Rest in Zeitlupe', flux: 'Übergänge zu zackig', break: 'Pause im Wort', hard: 'Anfang zu laut', fade: 'Lautstärke sinkt', flat: 'Lautstärke steigt nicht an',
   pitch: 'Tonhöhe unruhig', air: 'Luft wird knapp', voicebreak: 'Stimmabbruch', rough: 'Lautstärke ruckelt', word: 'Anderes Wort?' };
+const LEVEL_TEXT = { gut: 'Gut ✓', fast: 'Fast', nochmal: 'Nochmal' };
 function showResult(t, j) {
   lastResult = { t, j, word: cur };
   show('screenFb');
   $('fbWord').textContent = cur.parts.join(' · ');
-  const bad = j.items.filter((i) => !i.ok), v = $('verdict');
-  v.className = 'verdict ' + (j.pass ? 'ok' : 'bad');
-  v.textContent = j.pass ? 'Sehr gut prolongiert ✓' : (bad[0].key && TITLES[bad[0].key]) || 'Noch nicht ganz';
+  const bad = j.items.filter((i) => !i.ok), v = $('verdict'), lv = j.level || (j.pass ? 'gut' : 'nochmal');
+  v.className = 'verdict ' + (lv === 'gut' ? 'ok' : lv === 'fast' ? 'fast' : 'bad');
+  v.textContent = lv === 'gut' ? 'Gut ✓ – sehr gut prolongiert' : `${LEVEL_TEXT[lv]} – ${(bad[0] && TITLES[bad[0].key]) || 'noch nicht ganz'}`;
   const more = bad.slice(1, 3).map((i) => TITLES[i.key]).filter(Boolean);
   let ch = null, marks = new Set(), w0 = null;
   if (t.valid) { try { ch = buildChunks(t, cur); bad.forEach((it, k) => { const w = issueWhere(it, t, ch, cur); if (w) { w.idx.forEach((i) => marks.add(i)); if (k === 0) w0 = w; } }); } catch (e) { console.warn(e); ch = null; } }
-  $('fbText').textContent = j.pass ? '' : bad[0].text + (w0 && w0.text ? ' Stelle: ' + w0.text + '.' : '') + (more.length ? ' Außerdem: ' + more.join(', ') + '.' : '');
-  lastResult.ch = ch; lastResult.marks = marks; lastResult.markT = !j.pass && w0 && w0.time != null ? w0.time : null; $('legWhere').hidden = !(marks.size && !j.pass);
-  $('again').textContent = j.pass ? 'Noch einmal' : 'Nochmal versuchen';
-  $('next').textContent = j.pass ? 'Nächstes Wort ▸' : 'Überspringen ▸';
-  $('next').className = 'btn' + (j.pass ? ' primary' : ''); $('again').className = 'btn' + (j.pass ? '' : ' primary');
+  $('fbText').textContent = lv === 'gut' ? '' : bad[0].text + (w0 && w0.text ? ' Stelle: ' + w0.text + '.' : '') + (more.length ? ' Außerdem: ' + more.join(', ') + '.' : '');
+  $('vals').textContent = valuesText(t);
+  lastResult.ch = ch; lastResult.marks = marks; lastResult.markT = lv !== 'gut' && w0 && w0.time != null ? w0.time : null; $('legWhere').hidden = !(marks.size && lv !== 'gut');
+  const good = lv === 'gut';
+  $('again').textContent = good ? 'Noch einmal' : 'Nochmal versuchen';
+  $('next').textContent = good ? 'Nächstes Wort ▸' : 'Überspringen ▸';
+  $('next').className = 'btn' + (good ? ' primary' : ''); $('again').className = 'btn' + (good ? '' : ' primary');
   $('plot').hidden = !t.valid; $('legTarget').parentElement.hidden = !t.valid;
-  if (t.valid) requestAnimationFrame(() => drawPlot(t, j, cur, ch, j.pass ? new Set() : marks, lastResult.markT));
+  if (t.valid) requestAnimationFrame(() => drawPlot(t, j, cur, ch, good ? new Set() : marks, lastResult.markT));
 }
 $('next').addEventListener('click', () => { getAC().resume(); nextWord(); startRecording(); });   // direkt weiter aufnehmen
 $('again').addEventListener('click', () => { getAC().resume(); show('screenMain'); setStatus(''); startRecording(); });   // direkt wieder aufnehmen
@@ -774,26 +821,34 @@ function drawPlot(t, j, word, ch, marks, markT) {
   c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
   const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   const css = getComputedStyle(document.documentElement), col = (n) => css.getPropertyValue(n).trim();
-  const tg = targetCurve(t, j, word), padL = 4, padR = 4, top = 8, bot = 52, tMin = -0.3;
-  const tMax = Math.min(8, Math.max(t.tOff - t.tOn, tg.Tend + 0.25) + 0.3), yb = H - bot;
+  const tg = targetCurve(t, j, word), padL = 4, padR = 4, top = 18, bot = 52, tMin = 0;
+  const tMax = Math.min(8, Math.max(t.dur, t.tOn + tg.Tend + 0.35)), yb = H - bot;
   const X = (s) => padL + ((s - tMin) / (tMax - tMin)) * (W - padL - padR), Y = (a) => yb - clamp(a, 0, 1.08) / 1.08 * (yb - top);
   g.strokeStyle = col('--line'); g.lineWidth = 1; g.beginPath(); g.moveTo(padL, yb); g.lineTo(W - padR, yb); g.stroke();
-  // Ziel (dahinter, grün)
-  g.beginPath(); g.moveTo(X(0), yb); tg.pts.forEach(([x, a]) => g.lineTo(X(x), Y(a))); g.lineTo(X(tg.pts[tg.pts.length - 1][0]), yb); g.closePath();
+  // Ziel (dahinter, grün), ab dem erkannten Start
+  g.beginPath(); g.moveTo(X(t.tOn), yb); tg.pts.forEach(([x, a]) => g.lineTo(X(t.tOn + x), Y(a))); g.lineTo(X(t.tOn + tg.pts[tg.pts.length - 1][0]), yb); g.closePath();
   g.fillStyle = col('--targetfill'); g.fill(); g.strokeStyle = col('--target'); g.lineWidth = 2; g.stroke();
-  // dein Verlauf (davor, blau)
+  // dein Verlauf (davor, blau), auf den Spitzenwert normiert
   g.strokeStyle = col('--accent'); g.lineWidth = 3; g.lineJoin = 'round'; g.beginPath(); let st = false;
-  for (let i = 0; i < t.n; i++) { const s = t.t0 + i * t.dt - t.tOn; if (s < tMin || s > tMax) continue; const y = Y(t.A[i] / t.Amax); if (!st) { g.moveTo(X(s), y); st = true; } else g.lineTo(X(s), y); }
+  for (let i = 0; i < t.n; i++) { const s = t.t0 + i * t.dt; if (s < tMin || s > tMax) continue; const y = Y(t.A[i] / t.Amax); if (!st) { g.moveTo(X(s), y); st = true; } else g.lineTo(X(s), y); }
   g.stroke();
+  // erkannter Start und Ende der Dehnung
+  g.font = '600 11px system-ui'; g.textBaseline = 'alphabetic';
+  g.strokeStyle = col('--ink'); g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(t.tOn), top - 4); g.lineTo(X(t.tOn), yb); g.stroke();
+  g.fillStyle = col('--ink'); g.textAlign = 'left'; g.fillText('Start', X(t.tOn) + 3, top - 6);
+  if (t.slowDur >= 0.3) {
+    g.strokeStyle = col('--muted'); g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(t.tSlowEnd), top - 4); g.lineTo(X(t.tSlowEnd), yb); g.stroke(); g.setLineDash([]);
+    g.fillStyle = col('--muted'); g.textAlign = 'right'; g.fillText('Ende Dehnung', X(t.tSlowEnd) - 3, top - 6);
+  }
   if (markT != null) {                                               // genaue Stelle des Fehlers
-    const xm = X(markT - t.tOn); g.strokeStyle = 'rgba(234,138,40,.95)'; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(xm, top); g.lineTo(xm, yb + 4); g.stroke(); g.setLineDash([]);
+    const xm = X(markT); g.strokeStyle = 'rgba(234,138,40,.95)'; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(xm, top); g.lineTo(xm, yb + 4); g.stroke(); g.setLineDash([]);
   }
   if (ch && ch.length) {                                             // Laut-/Silbenzeile
-    const y0 = yb + 6, hh = 22; g.font = '600 13px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const y0 = yb + 6, hh = 22; g.textAlign = 'center'; g.textBaseline = 'middle';
     let xPrev = -Infinity;
     ch.forEach((c, i) => {
-      g.font = '600 13px system-ui'; const need = g.measureText(c.label).width + 8;                 // kurze Laute (z. B. „T“) bekommen eine Mindestbreite
-      const a = Math.max(X(clamp(c.t0 - t.tOn, tMin, tMax)) + 1, xPrev + 2), b = Math.max(X(clamp(c.t1 - t.tOn, tMin, tMax)) - 1, a + need); xPrev = b;
+      g.font = '600 13px system-ui'; const need = g.measureText(c.label).width + 8;
+      const a = Math.max(X(clamp(c.t0, tMin, tMax)) + 1, xPrev + 2), b = Math.max(X(clamp(c.t1, tMin, tMax)) - 1, a + need); xPrev = b;
       const hit = marks && marks.has(i);
       g.fillStyle = hit ? 'rgba(234,138,40,.55)' : col('--line'); g.beginPath(); g.roundRect ? g.roundRect(a, y0, b - a, hh, 5) : g.rect(a, y0, b - a, hh); g.fill();
       g.fillStyle = col('--ink'); if (g.measureText(c.label).width < b - a - 2) g.fillText(c.label, (a + b) / 2, y0 + hh / 2 + 1);
@@ -801,9 +856,52 @@ function drawPlot(t, j, word, ch, marks, markT) {
     g.textBaseline = 'alphabetic';
   }
   g.fillStyle = col('--muted'); g.font = '11px system-ui'; g.textAlign = 'center';
-  for (let s = 0; s <= tMax; s += 1) g.fillText(s + ' s', X(s), H - 6);
+  for (let s = 0; s <= tMax + 1e-6; s += 1) { g.textAlign = s === 0 ? 'left' : 'center'; g.fillText(s + ' s', X(s), H - 6); }
 }
 window.addEventListener('resize', () => { if (lastResult && !$('screenFb').hidden) drawPlot(lastResult.t, lastResult.j, lastResult.word, lastResult.ch, lastResult.j.pass ? new Set() : lastResult.marks, lastResult.markT); });
+
+// ---------- Testmodus: eigene Aufnahmen markieren und prüfen, wie oft die Seite richtig liegt ----------
+let testItems = [];
+function decodeToMono(arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext, ctx = new Ctx(1, 1, ANALYSIS_SR);
+    const done = (buf) => { const out = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c++) { const ch = buf.getChannelData(c); for (let i = 0; i < out.length; i++) out[i] += ch[i] / buf.numberOfChannels; }
+      resolve(out); };
+    const p = ctx.decodeAudioData(arrayBuffer, done, reject); if (p && p.catch) p.catch(reject);
+  });
+}
+const guessWord = (name) => (name.replace(/\.[^.]+$/, '').match(/[A-Za-zÄÖÜäöüß|]+/g) || [''])[0];
+function renderTest() {
+  const box = $('testList'); box.textContent = '';
+  testItems.forEach((it) => {
+    const d = document.createElement('div'); d.className = 'titem';
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.file.name;
+    const inp = document.createElement('input'); inp.type = 'text'; inp.value = it.word; inp.placeholder = 'Wort, z. B. Ber|lin'; inp.addEventListener('input', () => { it.word = inp.value.trim(); });
+    const seg = document.createElement('div'); seg.className = 'seg2';
+    [['korrekt', 'k'], ['fehlerhaft', 'f']].forEach(([lab, cls]) => { const b = document.createElement('button'); b.textContent = lab; b.className = cls + (it.label === lab ? ' on' : ''); b.addEventListener('click', () => { it.label = lab; renderTest(); }); seg.append(b); });
+    const res = document.createElement('div'); res.className = 'res'; res.textContent = it.result || '';
+    d.append(nm, inp, seg, res); box.append(d);
+  });
+}
+$('openTest').addEventListener('click', () => { show('screenTest'); renderTest(); });
+$('testBack').addEventListener('click', () => show('screenSet'));
+$('testFiles').addEventListener('change', (e) => { for (const f of Array.from(e.target.files)) testItems.push({ file: f, word: guessWord(f.name), label: null, result: '' }); e.target.value = ''; renderTest(); });
+$('testRun').addEventListener('click', async () => {
+  let n = 0, hit = 0, kTot = 0, kHit = 0, fTot = 0, fHit = 0; $('testSummary').textContent = 'Werte aus …';
+  for (const it of testItems) {
+    if (!it.word) { it.result = 'Bitte das Wort eintragen.'; continue; }
+    try {
+      const w = parseWords(it.word)[0], { t, j } = evaluateRecording(await decodeToMono(await it.file.arrayBuffer()), w);
+      const lv = j.level || (j.pass ? 'gut' : 'nochmal'), bad = j.items.filter((i) => !i.ok);
+      let mark = '';
+      if (it.label) { n++; const ok = it.label === 'korrekt' ? lv === 'gut' : lv !== 'gut'; if (ok) hit++; if (it.label === 'korrekt') { kTot++; if (ok) kHit++; } else { fTot++; if (ok) fHit++; } mark = ok ? '✓ richtig erkannt · ' : '✗ falsch erkannt · '; }
+      it.result = `${mark}Seite: ${LEVEL_TEXT[lv]}${bad[0] ? ' (' + (TITLES[bad[0].key] || '') + ')' : ''} · ${valuesText(t)}`;
+    } catch (err) { console.warn(err); it.result = 'Datei konnte nicht gelesen werden.'; }
+    renderTest(); await new Promise((r) => setTimeout(r, 0));
+  }
+  $('testSummary').textContent = n ? `Richtig erkannt: ${hit} von ${n} · korrekte als „gut“: ${kHit} von ${kTot} · fehlerhafte als „nicht gut“: ${fHit} von ${fTot}` : 'Markiere die Aufnahmen als korrekt oder fehlerhaft.';
+});
 
 // ---------- Einstellungen ----------
 $('gear').addEventListener('click', () => { $('wordsText').value = store.get('dehn_words', WORDS_DEFAULT); show('screenSet'); });
