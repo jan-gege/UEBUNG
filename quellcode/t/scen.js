@@ -1,0 +1,31 @@
+const R=require('./ref.js'); const cp=require('child_process'), fs=require('fs'); const {C,X,segs,sr}=R;
+const cut=(n,k,trim=false)=>{const s=segs[n][k];let y=X[n].subarray(Math.floor(s.start*sr),Math.ceil(s.end*sr)); return Float32Array.from(y);};
+const trimTo=(y)=>{ // Stille an den Rändern auf 0.1 s kürzen (grob über Energie)
+  const mx=Math.max(...y.map(Math.abs)); const th=0.03*mx; const sm=(i)=>{let m=0;for(let k=i;k<Math.min(y.length,i+220);k++)m=Math.max(m,Math.abs(y[k]));return m;}; let a=0,b=y.length-1; while(a<y.length&&sm(a)<th)a+=110; while(b>0&&sm(Math.max(0,b-220))<th)b-=110; a=Math.max(0,a-440); b=Math.min(y.length,b+440); return y.subarray(a,b);};
+const cat=(...ys)=>{const o=new Float32Array(ys.reduce((n,y)=>n+y.length,0));let p=0;for(const y of ys){o.set(y,p);p+=y.length;}return o;};
+const stretch=(y,f)=>{fs.writeFileSync('st.f32',Buffer.from(y.buffer,y.byteOffset,y.byteLength));
+  // f = Faktor Verlängerung; atempo = 1/f (Kette für <0.5)
+  let tempo=1/f, chain=[]; while(tempo<0.5){chain.push('atempo=0.5');tempo/=0.5;} chain.push('atempo='+tempo.toFixed(4));
+  cp.execSync(`ffmpeg -v error -y -f f32le -ar 22050 -ac 1 -i st.f32 -af "${chain.join(',')}" -f f32le st2.f32`); const q=fs.readFileSync('st2.f32');return new Float32Array(q.buffer.slice(q.byteOffset,q.byteOffset+q.length));};
+const fade=(y,sec)=>{const o=Float32Array.from(y);const n=Math.round(sec*sr);let on=0;for(let i=0;i<o.length;i++){if(Math.abs(o[i])>0.02){on=i;break;}}for(let i=0;i<n&&on+i<o.length;i++)o[on+i]*=i/n;return o;};
+const run=(label,y,word,expect)=>{const t=C.analyzeTake(y,sr,C.SETTINGS);const j=C.judge(t,word,C.LIMITS);
+ console.log(`\n[${label}] Silben=${word.syl}  erwartet: ${expect}\n  -> ${j.pass?'BESTANDEN':'nicht bestanden'} | slow ${t.valid?t.slowDur.toFixed(2):'-'} rest ${t.valid?t.restDur.toFixed(2):'-'} restFlux ${t.valid&&t.restFlux!=null?t.restFlux.toFixed(0):'-'} slowFlux ${t.valid&&t.slowFlux!=null?t.slowFlux.toFixed(0):'-'} rise ${t.valid?(t.rise*1000).toFixed(0):'-'}ms overshoot ${t.valid&&t.overshoot!=null?t.overshoot.toFixed(1):'-'}`);
+ j.items.forEach(i=>console.log('     '+(i.ok?'✓':'✗')+' '+i.text));};
+const fra=cut('silben',5), pro=cut('silben',7), tra=cut('silben',15), berlin=cut('antwort',3), milch=cut('antwort',6);
+run('A Fra gedehnt',fra,{syl:1},'bestanden');
+run('B Tra normal schnell',tra,{syl:1},'zu schnell');
+run('C Fra x1.7 gestreckt',stretch(fra,1.7),{syl:1},'zu lang');
+run('D Berlin (Therapeut)',berlin,{syl:2},'bestanden');
+run('D2 Milch (Therapeut)',milch,{syl:1},'bestanden');
+run('E Fra+Pro gedehnt (ganzes Wort)',cat(trimTo(fra),trimTo(pro)),{syl:2},'ganzes Wort');
+run('F Fra allein, aber 2-silbiges Wort',fra,{syl:2},'Rest fehlt');
+run('G Fra gedehnt + Tra normal',cat(trimTo(fra),trimTo(tra)),{syl:2},'bestanden');
+run('H Fra + Tra in Zeitlupe (x2.5)',cat(trimTo(fra),stretch(trimTo(tra),2.5)),{syl:2},'ganzes Wort / Rest zu langsam');
+run('I Fra mit 0.4s Einblendung',fade(fra,0.4),{syl:1},'weicher Einsatz');
+const onsetIdx=(y)=>{for(let i=0;i<y.length;i++)if(Math.abs(y[i])>0.02)return i;return 0;};
+const ramp=(y,db)=>{const o=Float32Array.from(y);const a=onsetIdx(y);let b=y.length-1;while(b>0&&Math.abs(y[b])<0.02)b--;for(let i=a;i<=b;i++){o[i]*=Math.pow(10,(db*(i-a)/(b-a))/20);}return o;};
+const burst=(y,db)=>{const o=Float32Array.from(y);const a=onsetIdx(y);for(let i=a;i<a+Math.round(0.15*sr);i++)o[i]*=Math.pow(10,db/20);return o;};
+run('K Fra, Lautstärke fällt deutlich (−40-dB-Rampe)',ramp(Float32Array.from(fra,v=>v*6),-40),{syl:1},"'Lautstärke sinkt'");
+run('K2 Fra, Lautstärke steigt um 8 dB',ramp(fra,8),{syl:1},'bestanden (steigt)');
+run('L Fra mit lautem Anfangsstoß (+14 dB, 150 ms)',burst(fra,14),{syl:1},"'Anfang zu laut'");
+run('J Rauschen',new Float32Array(sr*3).map(()=>(Math.random()-0.5)*0.004),{syl:1},'zu leise');

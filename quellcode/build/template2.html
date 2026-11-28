@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<title>Dehnübung</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #ffffff; --ink: #1b2331; --muted: #667389; --line: #dde2ea;
+    --accent: #2563eb; --accent-ink: #fff; --ok: #1b8a4b; --okbg: #e3f5ea; --bad: #c2410c; --badbg: #fdeee3; --rec: #dc2626;
+    --target: #1b8a4b; --targetfill: rgba(27,138,75,.22); --fast: #a16207; --fastbg: #fdf3d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161d; --card:#1b212b; --ink:#e8ecf3; --muted:#93a0b4; --line:#2b3441; --accent:#5b8def; --accent-ink:#0b1220;
+      --ok:#4cc17f; --okbg:#173325; --bad:#f0a24a; --badbg:#3a2a18; --rec:#ff6b5e; --target:#4cc17f; --targetfill:rgba(76,193,127,.25); --fast:#e8c25a; --fastbg:#3a3218; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  main { max-width: 520px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding: 12px 16px 16px; }
+  .bar { display: flex; justify-content: space-between; align-items: center; }
+  .chip { font: inherit; font-size: .9rem; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; }
+  .chip.on { color: var(--accent); border-color: var(--accent); }
+  section { flex: 1; display: flex; flex-direction: column; }
+  .center { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 10px; }
+  .word { font-size: clamp(3rem, 18vw, 5rem); font-weight: 800; line-height: 1.1; word-break: break-word; }
+  .word .first { color: var(--accent); } .word .sep { color: var(--muted); font-weight: 400; padding: 0 .06em; }
+  .hint { color: var(--muted); min-height: 1.4em; font-size: .95rem; }
+  .bottom { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-bottom: 8px; }
+  .status { min-height: 1.3em; color: var(--muted); font-size: .95rem; text-align: center; }
+  .meter { width: 100%; max-width: 360px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .meter > div { height: 100%; width: 0; background: var(--ok); transition: width .06s linear; }
+  #rec { width: 100%; max-width: 360px; font: inherit; font-size: 1.2rem; font-weight: 700; padding: 20px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; touch-action: manipulation; }
+  #rec.listen { background: var(--ok); color: #fff; } #rec.speak { background: var(--rec); color: #fff; } #rec:disabled { opacity: .6; }
+  .fbword { text-align: center; color: var(--muted); font-size: 1rem; margin-top: 6px; }
+  .verdict { font-size: 1.4rem; font-weight: 800; padding: 10px 14px; border-radius: 12px; margin: 8px 0 6px; text-align: center; }
+  .verdict.ok { background: var(--okbg); color: var(--ok); } .verdict.bad { background: var(--badbg); color: var(--bad); } .verdict.fast { background: var(--fastbg); color: var(--fast); }
+  .vals { text-align: center; font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; margin: -2px 0 8px; }
+  .titem { border-top: 1px solid var(--line); padding: 10px 0; } .titem .nm { font-size: .85rem; color: var(--muted); word-break: break-all; }
+  .titem input[type=text] { padding: 8px; margin: 6px 0; } .titem .res { font-size: .9rem; margin-top: 4px; }
+  .seg2 { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; } .seg2 button { font: inherit; font-size: .9rem; padding: 7px 12px; border: 0; background: var(--card); color: var(--muted); cursor: pointer; }
+  .seg2 button.on.k { background: var(--okbg); color: var(--ok); font-weight: 700; } .seg2 button.on.f { background: var(--badbg); color: var(--bad); font-weight: 700; }
+  .summary { font-weight: 700; margin: 10px 0; }
+  .fbtext { min-height: 1.4em; text-align: center; font-size: .98rem; margin: 0 2px 6px; }
+  canvas#plot { width: 100%; height: 240px; display: block; }
+  .legend { display: flex; justify-content: center; gap: 16px; font-size: .85rem; color: var(--muted); margin: 4px 0 10px; }
+  .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid var(--accent); vertical-align: 3px; margin-right: 6px; }
+  .legend i.w { height: 10px; border: 0; background: rgba(234,138,40,.55); border-radius: 3px; vertical-align: -1px; }
+  .legend i.t { height: 10px; border: 0; background: var(--targetfill); outline: 2px solid var(--target); outline-offset: -2px; border-radius: 3px; vertical-align: -1px; }
+  .row { display: flex; gap: 10px; } .row button { flex: 1; }
+  button.btn { font: inherit; font-weight: 600; padding: 15px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .banner { padding: 10px 12px; border-radius: 10px; background: var(--badbg); color: var(--bad); margin: 8px 0; font-weight: 600; }
+  .set label { display: block; margin: 14px 0 6px; font-weight: 600; } .set .small { font-size: .85rem; color: var(--muted); }
+  select, textarea { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  textarea { min-height: 240px; font: 15px/1.4 ui-monospace, Menlo, monospace; }
+  .bar .left { display: flex; gap: 8px; }
+  .fbmark { display: flex; justify-content: center; margin: 0 0 10px; }
+  .logtop { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
+  .logitem { border-top: 1px solid var(--line); padding: 10px 0; display: flex; gap: 10px; align-items: center; }
+  .logitem .info { flex: 1; min-width: 0; } .logitem .l1 { font-weight: 700; } .logitem .l2 { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .logitem .lv { font-size: .8rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 6px; }
+  .lv.gut { background: var(--okbg); color: var(--ok); } .lv.fast { background: var(--fastbg); color: var(--fast); } .lv.nochmal { background: var(--badbg); color: var(--bad); }
+  .ib { font: inherit; font-size: 1rem; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; flex: none; }
+  .ib.on { color: #b7791f; border-color: #e0b24a; }
+  a.btn { display: block; text-align: center; text-decoration: none; font-weight: 600; padding: 15px 14px; border-radius: 14px; background: var(--accent); color: var(--accent-ink); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="bar" id="bar"><div class="left"><button class="chip" id="sylBtn">Silben</button><button class="chip" id="airBtn" title="Prüft, ob vor der Stimme Luft entweicht">Luft-Check</button></div><button class="chip" id="gear" aria-label="Einstellungen">⚙</button></div>
+  <div id="banner" class="banner" hidden></div>
+
+  <section id="screenMain">
+    <div class="center"><div class="word" id="word">…</div><div class="hint" id="hint"></div></div>
+    <div class="bottom">
+      <div class="status" id="status"></div>
+      <div class="meter" id="meterWrap" hidden><div id="meter"></div></div>
+      <button id="rec">● Sprechen</button>
+    </div>
+  </section>
+
+  <section id="screenFb" hidden>
+    <div class="fbword" id="fbWord"></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="fbtext" id="fbText"></div>
+    <canvas id="plot"></canvas>
+    <div class="vals" id="vals"></div>
+    <div class="legend"><span><i></i>Dein Verlauf</span><span id="legTarget"><i class="t"></i>So wäre es sehr gut</span><span id="legWhere" hidden><i class="w"></i>hier</span></div>
+    <div class="fbmark"><button class="chip" id="markTher" disabled>☆ Für Logopäde</button></div>
+    <div class="row"><button class="btn" id="again">Nochmal versuchen</button><button class="btn" id="next">Überspringen ▸</button></div>
+  </section>
+
+  <section id="screenSet" class="set" hidden>
+    <div class="row"><button class="btn" id="back">‹ Zurück</button></div>
+    <label for="strictness">Strenge</label>
+    <select id="strictness"><option value="streng">Streng (wie ein Logopäde)</option><option value="normal">Normal</option></select>
+    <label for="wordsText">Wörter (ein Wort pro Zeile, Silben mit | trennen, # = Überschrift)</label>
+    <textarea id="wordsText" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px"><button class="btn" id="resetWords">Zurücksetzen</button><button class="btn primary" id="saveWords">Speichern</button></div>
+    <label class="small"><input type="checkbox" id="shuffle" checked> zufällige Reihenfolge</label>
+    <div class="row" style="margin-top:16px"><button class="btn" id="openLog">Übungsprotokoll</button></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="openTest">Testmodus: Aufnahmen prüfen</button></div>
+  </section>
+
+  <section id="screenLog" class="set" hidden>
+    <div class="row"><button class="btn" id="logBack">‹ Zurück</button></div>
+    <h2 style="margin:14px 0 4px">Übungsprotokoll</h2>
+    <div class="small" id="logInfo"></div>
+    <div class="logtop"><label class="small" style="margin:0;font-weight:400"><input type="checkbox" id="logOnlyMarked"> nur „Für Logopäde“</label></div>
+    <div class="row"><button class="btn primary" id="zipMake">Markierte als ZIP exportieren</button></div>
+    <div id="zipOut" hidden style="margin-top:10px"><div class="row"><a class="btn" id="zipLink">ZIP speichern</a><button class="btn" id="zipShare" hidden>Teilen …</button></div><div class="small" id="zipInfo" style="margin-top:6px"></div></div>
+    <div id="logList" style="margin-top:10px"></div>
+  </section>
+
+  <section id="screenTest" class="set" hidden>
+    <div class="row"><button class="btn" id="testBack">‹ Zurück</button></div>
+    <p class="small">Lade Aufnahmen hoch, ein Wort pro Datei. Trage das Wort ein (Silben mit |) und markiere, ob die Prolongation korrekt oder fehlerhaft ist. Dann „Auswerten“. Die Dateien bleiben auf diesem Gerät.</p>
+    <input type="file" id="testFiles" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" multiple>
+    <div id="testList"></div>
+    <div class="summary" id="testSummary"></div>
+    <div class="row"><button class="btn primary" id="testRun">Auswerten</button></div>
+  </section>
+</main>
+
+<script>
+/* ==========================================================================
+   WÖRTER (Standardliste, im Browser änderbar) – "|" trennt Silben
+   ========================================================================== */
+const WORDS_DEFAULT = [
+  '# Silben mit zwei Mitlauten am Anfang (CD)',
+  'Fra', 'Pro', 'Krie', 'Bla', 'Glei', 'Tra', 'Frei', 'Bru', 'Dra', 'Flo', 'Schlie', 'Gra', 'Troll', 'Bli', 'Schla', 'Klee', 'Zwie', 'Trau', 'Blei', 'Flur',
+  'Pra', 'Kra', 'Gri', 'Kla', 'Plu', 'Fli', 'Pri', 'Bra', 'Dru', 'Gla', 'Spri', 'Stra', 'Schnei', 'Schwa', 'Spie', 'Stau', 'Schra', 'Kno', 'Pfla', 'Zwa',
+  '# Wörter aus der CD „Antwort mit einem Wort“ (erste Silbe dehnen)',
+  'Ber|lin', 'Milch', 'Zwei', 'Rei|fen', 'Vier', 'Zy|lin|der', 'Schnar|chen', 'Zwer|ge', 'Ei|er', 'Ster|ne', 'Sie|ben', 'Fran|zö|sisch', 'Sat|tel', 'Brü|der', 'Schei|ne',
+  '# Einsilbige Wörter',
+  'Brot', 'Drei', 'Frau', 'Glas', 'Gras', 'Kran', 'Klang', 'Plan', 'Preis', 'Schloss', 'Schlaf', 'Schnee', 'Schwan', 'Spiel', 'Stein', 'Stern', 'Traum', 'Zwerg', 'Wien', 'Haus',
+  'Fisch', 'Tisch', 'Hand', 'Mund', 'Nacht', 'Land', 'Eis', 'Arm', 'Obst', 'Mut',
+  '# Zweisilbige Wörter, Anfang stimmhaft',
+  'Ma|ma', 'Na|se', 'Lam|pe', 'Ro|se', 'Was|ser', 'Gar|ten', 'Wol|ke', 'Ho|nig', 'Mu|sik', 'Mon|tag', 'Mut|ter', 'Va|ter', 'Bru|der', 'Lie|be', 'Re|gen', 'Mor|gen',
+  '# Zweisilbige Wörter, Anfang stimmlos',
+  'Kat|ze', 'Piz|za', 'Ki|no', 'Fens|ter', 'Fei|er', 'Kaf|fee', 'Kü|che', 'Tee|kan|ne', 'Zu|cker', 'Sup|pe',
+  'Schu|le', 'Schlüs|sel', 'Spa|ghet|ti', 'Stra|ße', 'Fa|mi|lie', 'Pa|pier', 'Tür|me', 'Ku|chen',
+  '# Zweisilbige Wörter, Anfang mit Vokal',
+  'Au|to', 'O|fen', 'In|sel', 'En|te', 'O|ma', 'O|pa', 'Ap|fel', 'Eu|ro', 'Eng|land', 'Un|ter',
+  '# Drei- und mehrsilbige Wörter',
+  'Ba|na|ne', 'To|ma|te', 'Te|le|fon', 'Com|pu|ter', 'Scho|ko|la|de', 'Kar|tof|fel', 'Schmet|ter|ling', 'Ge|burts|tag', 'Wo|chen|en|de', 'U|ni|ver|si|tät', 'Stu|di|um',
+  'Wirt|schaft', 'Ös|ter|reich', 'Prü|fung', 'Be|wer|bung', 'Don|ners|tag', 'Mitt|woch', 'Frei|tag', 'Sams|tag', 'Ja|nu|ar', 'Fe|bru|ar', 'Os|na|brück', 'Han|no|ver', 'Ham|burg',
+].join('\n');
+
+
+
+/* ==========================================================================
+   EIGENE REFERENZ PRO WORT aus den CD-Beispielen (nur abgeleitete Zahlen, keine Tonaufnahmen):
+   slowDur = Dauer der Dehnung (s), start/end = Anfang/Ende gegenüber der Mitte (dB), slope = Lautstärke-Anstieg (dB/s),
+   curve = Lautstärkekurve (0–100 %) alle 50 ms ab 0,15 s vor Stimmbeginn
+   ========================================================================== */
+const REF_WORDS = /*REFWORDS*/;
+
+/* ==========================================================================
+   GRENZWERTE für die Bewertung – hier anpassen
+   ========================================================================== */
+const LIMITS = {
+  // --- Dauer der gedehnten ersten Silbe (bewusst großzügig) ---
+  WORD_ONLY_WIDEN: true,    // Wörter mit eigenem CD-Vorbild: Bereich darf nur größer werden, nie enger
+  WORD_LO_FACTOR: 0.7,
+  WORD_HI_FACTOR: 1.6,
+  ABS_MIN_SEC: 0.8, ABS_MAX_SEC: 4.5,
+  SLOW_MIN: 1.0,            // ab 1 s gilt es als gedehnt   [normal gesprochene Silben auf der CD: 0,53–0,82 s]
+  SLOW_MAX: 4.5,            // erst über 4,5 s „zu lang“
+  WHOLE_WORD_SEC: 3.0,      // mehrsilbiges Wort: über 3 s am Stück ohne normalen Rest = ganzes Wort gedehnt
+  TOO_FAST_FRACTION: 0.5,   // unter 50 % der Mindestdauer gilt es als „zu schnell“ (fast normales Tempo)
+  // --- Klang und Rest des Wortes ---
+  REST_MIN_SEC: 0.25,       // mehrsilbige Wörter: Rest mindestens so lang pro weiterer Silbe (s)
+  REST_FLUX_MIN: 45,        // … und mit so viel Klangänderung (dB/s, reine Klangfarbe)
+  REST_SYL_MAX_SEC: 0.9,    // … aber höchstens so lang pro Silbe (sonst „Zeitlupe“)
+  BREAK_FAIL_SEC: 0.5,      // Stille mitten im Wort ab so vielen Sekunden = abgesetzt
+  // --- Lautstärkeverlauf (nur stimmhafte Laute der Dehnung) ---
+  START_HARD_DB: 3.5,       // Anfang so viel lauter als die Mitte = hart/gepresst      [CD: größter Wert +2,9]
+  END_FADE_DB: -3,          // Ende so viel leiser als die Mitte …                         [CD: kleinster Wert +1,3]
+  SLOPE_FADE: -2,           // … und der Verlauf fällt um mehr als so viele dB pro s       [CD: kleinster Wert +2,8]
+  SLOPE_MIN: 1.0,           // Lautstärke muss mindestens so viel pro s ansteigen (null = nicht prüfen)
+  SLOPE_RISING: 1.5,        // ab so viel Anstieg wird „steigt sanft an“ gelobt
+  // --- Stimmführung (nur Dehnung) ---
+  PITCH_STEPS_MAX: 0,       // erlaubte Tonsprünge (> 3 Halbtöne, dauerhaft)               [CD: 0]
+  PITCH_WOBBLE_MAX: 0.18,   // Wackeln der Tonhöhe höchstens (Halbtöne)                    [CD: max 0,12]
+  PITCH_DRIFT_MIN_ST: -5.5, // Absinken der Tonhöhe zum Ende (Luft wird knapp), Halbtöne    [CD: kleinster Wert −3,7]
+  VOICE_BREAK_MAX_SEC: 0.2, // Stimme setzt länger als so viele s aus = Stimmabbruch        [CD: max 0,18]
+  ROUGH_MAX: 0.8,           // Ruckeln der Lautstärke höchstens (dB)                       [CD: max 0,50]
+  // --- Luft vor dem Laut (nur Wörter mit Vokal/stimmhaftem Anfang, Schalter „Luft-Check“) ---
+  AIR_MIN_SEC: 0.25,        // Hinweis erst ab so viel Luft vor der Stimme (s)              [CD: 0,00–0,07 s]
+  AIR_EXTRA_SEC: 0.15,      // … und mindestens so viel mehr als bei der Vorlage (s)
+  AIR_REF_DEFAULT_SEC: 0.05,// Vorlage-Wert für Wörter ohne eigenes CD-Vorbild (s)
+};
+// Nachsichtigere Stufe („normal“): überschreibt einzelne Werte von oben
+const LIMITS_NORMAL = { SLOW_MIN: 0.8, SLOW_MAX: 5.0, ABS_MAX_SEC: 5.0, START_HARD_DB: 7, SLOPE_MIN: null,
+  PITCH_STEPS_MAX: 1, PITCH_WOBBLE_MAX: 0.3, PITCH_DRIFT_MIN_ST: -8, VOICE_BREAK_MAX_SEC: 0.35, ROUGH_MAX: 1.2, AIR_MIN_SEC: 0.35, AIR_EXTRA_SEC: 0.25 };
+const LIMITS_STRICT = Object.assign({}, LIMITS);   // Sicherungskopie der strengen Werte
+function applyStrictness(mode) { Object.assign(LIMITS, LIMITS_STRICT, mode === 'normal' ? LIMITS_NORMAL : {}); }
+
+/* ==========================================================================
+   Feineinstellungen der Messung
+   ========================================================================== */
+const SETTINGS = {
+  MIN_SNR_DB: 12, ONSET_ABOVE_FLOOR_DB: 8, ONSET_HOLD_SEC: 0.05, BAND_MIN_SNR: 4,
+  BREAK_SEC: 0.2, BREAK_ABOVE_FLOOR_DB: 3,
+  AIR_NOISE_DB: 5,             // „Luft“ = so viele dB über dem Grundrauschen, aber noch ohne Tonhöhe
+  AIR_START_CLASSES: 'VNLRZ',  // Luft-Check standardmäßig an bei Anfang Vokal, m/n, l, r, w/j/s (stimmhaft); b/d/g aus (Verschluss)
+  LOG_KEEP_UNMARKED: 1000,     // Protokoll: so viele nicht markierte Versuche behalten (markierte werden nie gelöscht)
+  PITCH_MIN_HZ: 70, PITCH_MAX_HZ: 400, VOICED_MIN_R: 0.55, VOICED_GAP_SEC: 0.06, VOICED_MIN_SEC: 0.5, PROFILE_TRIM_DB: 15, YIN_THRESHOLD: 0.15, PITCH_STEP_ST: 3, PITCH_SKIP_SEC: 0.2, PITCH_SKIP_END_SEC: 0.2,
+  REGION_START_DB: 14, REGION_HOLD_DB: 8, REGION_EDGE_DB: 5, REGION_EDGE_SEC: 1.5, REGION_GAP_SEC: 0.4, REGION_MIN_SEC: 0.2, REGION_PAD_SEC: 0.3,   // Wort in der Aufnahme finden
+  NOISE_REF_SEC: 0.5,          // Grundrauschen aus den ersten 0,5 s der Aufnahme
+  REC_VOICE_DB: 10, REC_SILENCE_DB: 9,   // Stimme = so viele dB über dem Grundrauschen, Stille = darunter
+  REC_SKIP_MS: 450, REC_ARM_MS: 950, REC_SILENCE_MS: 1200, REC_MIN_VOICE_MS: 500, REC_MAX_SPEAK_MS: 8000, REC_HIGHPASS_HZ: 60,
+  FLUX_SPAN_SEC: 0.04, FLUX_MEDIAN_SEC: 0.4, FLUX_GAP_SEC: 0.25, SLOW_FLUX_MAX: 55, SLOW_RUN_MIN_SEC: 0.4, SLOW_RUN_LONG_SEC: 0.6,
+  RISE_LOW: 0.10, RISE_HIGH: 0.90, ATTACK_WINDOW_SEC: 0.5,
+};
+
+
+/*CORE*/
+
+/* ==========================================================================
+   Oberfläche
+   ========================================================================== */
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* gesperrt */ } } };
+const showBanner = (m) => { $('banner').textContent = m; $('banner').hidden = !m; };
+const setStatus = (t) => { $('status').textContent = t; };
+function show(name) {
+  for (const s of ['screenMain', 'screenFb', 'screenSet', 'screenTest', 'screenLog']) $(s).hidden = s !== name;
+  $('bar').hidden = name !== 'screenMain'; window.scrollTo(0, 0);
+}
+
+// ---------- Wörter ----------
+let words = [], deck = [], cur = null, lastResult = null, showSyl = store.get('dehn_syl', '0') === '1';
+const parseWords = (txt) => txt.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => {
+  const parts = l.split('|').map((p) => p.trim()).filter(Boolean), text = parts.join('');
+  return { parts, text, syl: parts.length, ref: REF_WORDS[text.toLowerCase()] || null };
+});
+// Luft-Check pro Wort: Standard aus dem ersten Laut, eigene Wahl wird gespeichert
+let airPref = {}; try { airPref = JSON.parse(store.get('dehn_air', '{}')) || {}; } catch (e) { airPref = {}; }
+const airDefault = (w) => { const p = wordPhones(w.text)[0]; return !!p && SETTINGS.AIR_START_CLASSES.includes(p.c); };
+const airOn = (w) => (w.text in airPref ? !!airPref[w.text] : airDefault(w));
+function loadWords() { words = parseWords(store.get('dehn_words', WORDS_DEFAULT)); if (!words.length) words = parseWords(WORDS_DEFAULT); }
+function nextWord() {
+  if (!deck.length) {
+    deck = words.map((_, i) => i);
+    if ($('shuffle').checked) for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  }
+  cur = words[deck.shift()]; renderWord(); show('screenMain');
+}
+function renderWord() {
+  const w = $('word'); w.textContent = '';
+  cur.parts.forEach((p, i) => {
+    if (showSyl && i) { const s = document.createElement('span'); s.className = 'sep'; s.textContent = '·'; w.append(s); }
+    const sp = document.createElement('span'); if (showSyl && cur.syl > 1 && i === 0) sp.className = 'first'; sp.textContent = p; w.append(sp);
+  });
+  $('hint').textContent = !showSyl ? '' : cur.syl > 1 ? 'Nur die blaue Silbe dehnen, den Rest normal sprechen.' : 'Jeden Laut dehnen und ineinander gleiten lassen.';
+  $('sylBtn').classList.toggle('on', showSyl); setStatus('');
+  const ao = airOn(cur); $('airBtn').classList.toggle('on', ao); $('airBtn').textContent = ao ? 'Luft-Check ✓' : 'Luft-Check';
+}
+$('airBtn').addEventListener('click', () => {
+  const v = !airOn(cur); if (v === airDefault(cur)) delete airPref[cur.text]; else airPref[cur.text] = v; store.set('dehn_air', JSON.stringify(airPref));
+  renderWord(); setStatus(v ? `Luft-Check für „${cur.text}“ an: Hinweis, wenn vor der Stimme Luft entweicht.` : `Luft-Check für „${cur.text}“ aus.`);
+});
+$('sylBtn').addEventListener('click', () => { showSyl = !showSyl; store.set('dehn_syl', showSyl ? '1' : '0'); renderWord(); });
+
+// ---------- Aufnahme mit Selbst-Stopp ----------
+let ac = null, micStream = null, rec = null;
+function getAC() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); return ac; }
+async function resampleTo(samples, sr, target) {
+  if (sr === target) return samples;
+  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const off = new Ctx(1, Math.ceil(samples.length * target / sr), target);
+  const buf = off.createBuffer(1, samples.length, sr); buf.copyToChannel(samples, 0);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
+function setRecUI(state) {
+  const b = $('rec'); b.className = state === 'listen' ? 'listen' : state === 'speak' ? 'speak' : '';
+  b.disabled = state === 'arm' || state === 'busy';
+  b.textContent = { idle: '● Sprechen', arm: 'Moment …', listen: 'Jetzt sprechen', speak: 'Ich höre … (fertig? tippen)', busy: 'Auswertung …' }[state];
+  $('meterWrap').hidden = !(state === 'arm' || state === 'listen' || state === 'speak');
+}
+$('rec').addEventListener('click', () => { getAC().resume(); if (!rec) startRecording(); else if (rec.phase === 'speak') finishRecording(); else if (rec.phase === 'listen') cancelRecording('Abgebrochen.'); });
+
+async function startRecording() {
+  if (rec) return;
+  showBanner(''); const ctx0 = getAC(), resumed = ctx0.resume();       // im Klick sofort wecken (iPhone)
+  try {
+    const live = micStream && micStream.active && micStream.getAudioTracks().every((tr) => tr.readyState === 'live' && tr.enabled);
+    if (!live)
+      // ohne automatische Pegelregelung/Rauschfilter, sonst wird der Lautstärkeverlauf verfälscht
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    showBanner('Mikrofon nicht verfügbar: ' + (e.name === 'NotAllowedError' ? 'Zugriff verweigert – in den Browser-Einstellungen erlauben.' : e.message)); return;
+  }
+  const ctx = ctx0; try { await resumed; } catch (e) { /* weiter */ }
+  const src = ctx.createMediaStreamSource(micStream), hp = ctx.createBiquadFilter(), an = ctx.createAnalyser(), mute = ctx.createGain(), proc = ctx.createScriptProcessor(4096, 1, 1);
+  hp.type = 'highpass'; hp.frequency.value = SETTINGS.REC_HIGHPASS_HZ;      // Brummen, Rumpeln, Tischklopfen (tiefe Frequenzen) weg
+  an.fftSize = 1024; mute.gain.value = 0; const chunks = [], t0 = performance.now();
+  proc.onaudioprocess = (e) => { if (performance.now() - t0 >= SETTINGS.REC_SKIP_MS) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };   // erste ~0,5 s (Klick) verwerfen
+  src.connect(hp); hp.connect(an); hp.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  rec = { phase: 'arm', t0, chunks, nodes: [src, hp, proc, mute], sr: ctx.sampleRate, base: [], voiceMs: 0, silenceMs: 0, voicedTotal: 0, speakStart: 0, last: performance.now(), baseDb: -70 };
+  setRecUI('arm'); setStatus('Kurz still sein …');
+  const buf = new Float32Array(an.fftSize), thr = { arm: SETTINGS.REC_ARM_MS, noVoice: 20000, silence: SETTINGS.REC_SILENCE_MS, minVoice: SETTINGS.REC_MIN_VOICE_MS, maxSpeak: SETTINGS.REC_MAX_SPEAK_MS };
+  const loop = () => {
+    if (!rec) return;
+    const now = performance.now(), dtMs = now - rec.last; rec.last = now;
+    an.getFloatTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    const db = 20 * Math.log10(Math.sqrt(s / buf.length) + 1e-6), el = now - rec.t0;
+    $('meter').style.width = clamp((db + 60) / 50, 0, 1) * 100 + '%';
+    if (rec.phase === 'arm') {
+      if (el >= SETTINGS.REC_SKIP_MS) rec.base.push(db);              // Klick nicht in die Rauschmessung
+      if (el >= thr.arm) { const okv = rec.base.filter((v) => v > -100); rec.baseDb = okv.length ? percentile(okv, 50) : -70; /* Anfangs-Nullen ignorieren, robust falls man schon spricht */ rec.phase = 'listen'; setRecUI('listen'); setStatus('Sprich das Wort, ich höre, wann du fertig bist.'); }
+    } else if (rec.phase === 'listen') {
+      rec.voiceMs = db > rec.baseDb + SETTINGS.REC_VOICE_DB ? rec.voiceMs + dtMs : 0;
+      if (rec.voiceMs >= 150) { rec.phase = 'speak'; rec.silenceMs = 0; rec.voicedTotal = rec.voiceMs; rec.speakStart = now; setRecUI('speak'); setStatus(''); }
+      else if (el > thr.arm + thr.noVoice) return cancelRecording('Keine Stimme gehört. Nochmal tippen und sprechen.');
+    } else if (rec.phase === 'speak') {
+      if (db > rec.baseDb + SETTINGS.REC_VOICE_DB) rec.voicedTotal += dtMs;
+      rec.silenceMs = db < rec.baseDb + SETTINGS.REC_SILENCE_DB ? rec.silenceMs + dtMs : Math.max(0, rec.silenceMs - 3 * dtMs);   // kurzes Rauschen setzt die Stille nicht ganz zurück
+      if (rec.silenceMs >= thr.silence) {
+        if (rec.voicedTotal >= thr.minVoice) return finishRecording();
+        rec.phase = 'listen'; rec.voiceMs = 0; setRecUI('listen');     // war nur ein kurzes Geräusch: weiter zuhören
+      } else if (now - rec.speakStart > thr.maxSpeak) return finishRecording();
+    }
+    rec.raf = requestAnimationFrame(loop);
+  };
+  rec.raf = requestAnimationFrame(loop);
+}
+function teardown() { cancelAnimationFrame(rec.raf); rec.nodes.forEach((n) => { try { n.disconnect(); } catch (e) { /* ok */ } }); }
+function cancelRecording(msg) { teardown(); rec = null; setRecUI('idle'); setStatus(msg); }
+async function finishRecording() {
+  const r = rec; teardown(); rec = null; setRecUI('busy'); setStatus('');
+  try {
+    const raw = new Float32Array(r.chunks.reduce((n, c) => n + c.length, 0)); let o = 0;
+    for (const c of r.chunks) { raw.set(c, o); o += c.length; }
+    const res = evaluateRecording(await resampleTo(raw, r.sr, ANALYSIS_SR), cur);
+    showResult(res.t, res.j);
+    logSave(res, cur);                                                 // ins Übungsprotokoll
+  } catch (e) { console.error(e); showBanner('Auswertung fehlgeschlagen: ' + (e.message || e)); }
+  setRecUI('idle');
+}
+
+// ---------- Auswertung einer Aufnahme ----------
+function normalizePeak(x) {                                          // Lautstärke auf den Spitzenwert der Aufnahme normieren
+  const hop = Math.round(ANALYSIS_SR * 0.01), r = [];
+  for (let i = 0; i + hop <= x.length; i += hop) { let s = 0; for (let k = 0; k < hop; k++) s += x[i + k] * x[i + k]; r.push(Math.sqrt(s / hop)); }
+  const pk = r.length ? percentile(r, 99.5) : 0; if (pk < 1e-5) return x;
+  const g = 0.3 / pk, y = new Float32Array(x.length); for (let i = 0; i < x.length; i++) y[i] = x[i] * g; return y;
+}
+function evaluateRecording(raw, word) {
+  const all = normalizePeak(raw), ref = all.subarray(0, Math.min(all.length, Math.round(SETTINGS.NOISE_REF_SEC * ANALYSIS_SR)));
+  const reg = findWordRegion(all, ANALYSIS_SR, SETTINGS), samples = reg ? all.subarray(reg.start, reg.end) : all;   // nur der Abschnitt mit dem Wort
+  const air = airOn(word), t = analyzeTake(samples, ANALYSIS_SR, SETTINGS, ref), j = judge(t, Object.assign({}, word, { airCheck: air }), LIMITS);
+  j.airCheck = air;
+  return { t, j, audio: reg ? raw.subarray(reg.start, reg.end) : raw };
+}
+const valuesText = (t, j) => t.valid ? `Start ${fmt(t.tOn, 2)} s · Dehnung ${fmt(t.slowDur, 2)} s · Anstieg ${Math.round(t.rise * 1000)} ms` + (j && j.airCheck && t.airDur != null ? ` · Luft ${fmt(t.airDur, 2)} s` : '') : 'keine auswertbare Stimme';
+
+// ---------- Rückmeldung ----------
+const TITLES = { fast: 'Zu schnell', short: 'Etwas zu kurz gedehnt', long: 'Zu lang gedehnt', whole: 'Ganzes Wort gedehnt', rest: 'Rest des Wortes fehlt',
+  restslow: 'Rest in Zeitlupe', flux: 'Übergänge zu zackig', break: 'Pause im Wort', hard: 'Anfang zu laut', fade: 'Lautstärke sinkt', flat: 'Lautstärke steigt nicht an',
+  pitch: 'Tonhöhe unruhig', air: 'Luft wird knapp', voicebreak: 'Stimmabbruch', rough: 'Lautstärke ruckelt', word: 'Anderes Wort?', airstart: 'Luft vor dem Laut' };
+const LEVEL_TEXT = { gut: 'Gut ✓', fast: 'Fast', nochmal: 'Nochmal' };
+function showResult(t, j) {
+  lastResult = { t, j, word: cur };
+  show('screenFb');
+  $('fbWord').textContent = cur.parts.join(' · ');
+  const bad = j.items.filter((i) => !i.ok), v = $('verdict'), lv = j.level || (j.pass ? 'gut' : 'nochmal');
+  v.className = 'verdict ' + (lv === 'gut' ? 'ok' : lv === 'fast' ? 'fast' : 'bad');
+  v.textContent = lv === 'gut' ? 'Gut ✓ – sehr gut prolongiert' : `${LEVEL_TEXT[lv]} – ${(bad[0] && TITLES[bad[0].key]) || 'noch nicht ganz'}`;
+  const more = bad.slice(1, 3).map((i) => TITLES[i.key]).filter(Boolean);
+  let ch = null, marks = new Set(), w0 = null;
+  if (t.valid) { try { ch = buildChunks(t, cur); bad.forEach((it, k) => { const w = issueWhere(it, t, ch, cur); if (w) { w.idx.forEach((i) => marks.add(i)); if (k === 0) w0 = w; } }); } catch (e) { console.warn(e); ch = null; } }
+  $('fbText').textContent = lv === 'gut' ? '' : bad[0].text + (w0 && w0.text ? ' Stelle: ' + w0.text + '.' : '') + (more.length ? ' Außerdem: ' + more.join(', ') + '.' : '');
+  $('vals').textContent = valuesText(t, j);
+  logMarkReset();
+  lastResult.ch = ch; lastResult.marks = marks; lastResult.markT = lv !== 'gut' && w0 && w0.time != null ? w0.time : null; $('legWhere').hidden = !(marks.size && lv !== 'gut');
+  const good = lv === 'gut';
+  $('again').textContent = good ? 'Noch einmal' : 'Nochmal versuchen';
+  $('next').textContent = good ? 'Nächstes Wort ▸' : 'Überspringen ▸';
+  $('next').className = 'btn' + (good ? ' primary' : ''); $('again').className = 'btn' + (good ? '' : ' primary');
+  $('plot').hidden = !t.valid; $('legTarget').parentElement.hidden = !t.valid;
+  if (t.valid) requestAnimationFrame(() => drawPlot(t, j, cur, ch, good ? new Set() : marks, lastResult.markT));
+}
+$('next').addEventListener('click', () => { getAC().resume(); nextWord(); startRecording(); });   // direkt weiter aufnehmen
+$('again').addEventListener('click', () => { getAC().resume(); show('screenMain'); setStatus(''); startRecording(); });   // direkt wieder aufnehmen
+
+// ---------- Wo im Wort? Laut-/Silbenzeile und Zuordnung der Fehler ----------
+// Verlässlich trennbar: Rauschlaute (sch, s, f, ch, h), Verschlusslaute (p, t, k, b, d, g) und die Grenze gedehnte Silbe / Rest.
+// Vokale, l, r, m, n, w lassen sich ohne Spracherkennung nicht sicher trennen und werden zusammengefasst (z. B. „ra“).
+const SONOR = 'VLNZR';
+function buildChunks(t, word) {
+  const al = alignWord(t, word.text), parts = word.parts, ends = []; let acc = 0; parts.forEach((p) => { acc += p.length; ends.push(acc); });
+  const tStart = al ? Math.min(al.seg[0].t0, t.tOn) : t.tOn, tEnd = t.tOff, sylT = [];
+  if (parts.length === 1) sylT.push([tStart, tEnd]);
+  else {
+    const se = clamp(t.tSlowEnd, tStart + 0.05, tEnd - 0.05), restLen = parts.slice(1).reduce((n, p) => n + p.length, 0); sylT.push([tStart, se]);
+    let a = se; parts.slice(1).forEach((p) => { const d = (tEnd - se) * p.length / restLen; sylT.push([a, a + d]); a += d; });
+  }
+  const chunks = [];
+  if (!al || al.conf < 0.6) { parts.forEach((p, s) => chunks.push({ label: p, t0: sylT[s][0], t1: sylT[s][1], syl: s })); return chunks; }
+  let li = 0; const phs = al.seg.map((sg) => { let s = ends.findIndex((e) => li < e); if (s < 0) s = parts.length - 1; li += sg.g.length; return { ...sg, syl: s }; });
+  parts.forEach((p, s) => {
+    const [s0, s1] = sylT[s];
+    if (s > 0) { chunks.push({ label: p, t0: s0, t1: s1, syl: s }); return; }   // Rest: je Silbe ein Block
+    let curC = null; const list = [];
+    for (const ph of phs.filter((x) => x.syl === 0)) {
+      const a = clamp(ph.t0, s0, s1), b = clamp(ph.t1, s0, s1), son = SONOR.includes(ph.c);
+      if (!ph.g) { if (curC) curC.t1 = b; continue; }
+      if (curC && ((son && curC.son) || curC.glue)) { curC.label += ph.g; curC.t1 = b; curC.son = curC.son || son; curC.glue = false; }
+      else { curC = { label: ph.g, t0: a, t1: b, syl: 0, son, glue: (ph.c === 'P' || ph.c === 'B') && b - a > 0.3 }; list.push(curC); }   // langer „Verschluss“ = eigentlich mit dem nächsten Laut verschmolzen
+    }
+    if (!list.length) { chunks.push({ label: p, t0: s0, t1: s1, syl: 0 }); return; }
+    list.forEach((c, k) => { c.t0 = k ? list[k - 1].t1 : s0; }); list[list.length - 1].t1 = s1;
+    chunks.push(...list.filter((c) => c.t1 > c.t0));
+  });
+  return chunks;
+}
+const chunkAt = (ch, x) => { let best = 0, bd = Infinity; ch.forEach((c, i) => { const d = x < c.t0 ? c.t0 - x : x > c.t1 ? x - c.t1 : 0; if (d < bd) { bd = d; best = i; } }); return best; };
+function issueWhere(item, t, ch, word) {
+  const p = t.profile || {}, q = p.pitch || {}, lab = (i) => `„${ch[i].label}“`, tm = (x) => fmt(Math.max(0, x - t.tOn), 1);
+  const at = (x, pre = 'bei') => { const i = chunkAt(ch, x); return { idx: [i], text: `${pre} ${lab(i)}, nach ca. ${tm(x)} s`, time: x }; };
+  const syl0 = ch.map((c, i) => (c.syl === 0 ? i : -1)).filter((i) => i >= 0), rest = ch.map((c, i) => (c.syl > 0 ? i : -1)).filter((i) => i >= 0);
+  const syl0Text = word.syl > 1 ? `in der gedehnten Silbe „${word.parts[0]}“` : '';
+  switch (item.key) {
+    case 'hard': return { idx: [0], text: `am Anfang, bei ${lab(0)}` };
+    case 'airstart': return { idx: [0], text: `vor ${lab(0)}`, time: t.tAir };
+    case 'pitch': return q.jumpAts && q.jumpAts.length ? at(q.jumpAts[0]) : { idx: syl0, text: syl0Text };
+    case 'voicebreak': return p.breakAt != null ? at(p.breakAt) : null;
+    case 'rough': return p.roughAt != null ? at(p.roughAt) : null;
+    case 'air': case 'fade': return at(Math.max(t.tOn, t.tSlowEnd - 0.2), 'gegen Ende, bei');
+    case 'break': { const b = t.breaks.find((x) => x[1] - x[0] >= LIMITS.BREAK_FAIL_SEC); return b ? at(b[0]) : null; }
+    case 'rest': case 'restslow': return rest.length ? { idx: rest, text: `im Rest „${word.parts.slice(1).join('')}“` } : null;
+    case 'whole': case 'word': return { idx: ch.map((_, i) => i), text: '' };
+    default: return { idx: syl0, text: syl0Text };   // Dauer, flach, zackig: betrifft die gedehnte Silbe
+  }
+}
+
+// Zielkurve: so müsste es bei dir aussehen – Dauer in den Zielbereich, leise anfangen, gleichmäßig lauter werden (Anstieg wie im CD-Vorbild)
+function targetCurve(t, j, word) {
+  const lo = j.lo, hi = j.hi; let Tend = t.slowDur;
+  if (Tend < lo || Tend > hi) Tend = clamp(word.ref ? word.ref.slowDur : 2.0, lo, hi);   // typische Dehnung von der CD
+  const s = word.ref ? clamp(word.ref.slope, 3, 8) : 5;                       // dB pro Sekunde
+  let pk = 0; for (let i = 0; i < t.n; i++) { const tt = t.t0 + i * t.dt; if (tt >= t.tOn && tt <= t.tSlowEnd) pk = Math.max(pk, t.A[i]); }
+  const P = t.slowDur >= 0.5 * lo ? clamp(pk / t.Amax, 0.5, 1) : 1, pts = [];   // zu kurze Dehnung: Ziel auf deine höchste Lautstärke beziehen
+  for (let x = 0; x <= Tend + 0.25; x += 0.02) {
+    let a = x <= Tend ? P * Math.pow(10, -s * (Tend - x) / 20) : P * Math.max(0, 1 - (x - Tend) / 0.25);
+    if (x < 0.06) a *= x / 0.06; pts.push([x, a]);
+  }
+  return { pts, Tend };
+}
+function drawPlot(t, j, word, ch, marks, markT) {
+  const c = $('plot'), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight; if (!W) return;
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement), col = (n) => css.getPropertyValue(n).trim();
+  const tg = targetCurve(t, j, word), padL = 4, padR = 4, top = 18, bot = 52, tMin = 0;
+  const tMax = Math.min(8, Math.max(t.dur, t.tOn + tg.Tend + 0.35)), yb = H - bot;
+  const X = (s) => padL + ((s - tMin) / (tMax - tMin)) * (W - padL - padR), Y = (a) => yb - clamp(a, 0, 1.08) / 1.08 * (yb - top);
+  g.strokeStyle = col('--line'); g.lineWidth = 1; g.beginPath(); g.moveTo(padL, yb); g.lineTo(W - padR, yb); g.stroke();
+  // Ziel (dahinter, grün), ab dem erkannten Start
+  g.beginPath(); g.moveTo(X(t.tOn), yb); tg.pts.forEach(([x, a]) => g.lineTo(X(t.tOn + x), Y(a))); g.lineTo(X(t.tOn + tg.pts[tg.pts.length - 1][0]), yb); g.closePath();
+  g.fillStyle = col('--targetfill'); g.fill(); g.strokeStyle = col('--target'); g.lineWidth = 2; g.stroke();
+  // dein Verlauf (davor, blau), auf den Spitzenwert normiert
+  g.strokeStyle = col('--accent'); g.lineWidth = 3; g.lineJoin = 'round'; g.beginPath(); let st = false;
+  for (let i = 0; i < t.n; i++) { const s = t.t0 + i * t.dt; if (s < tMin || s > tMax) continue; const y = Y(t.A[i] / t.Amax); if (!st) { g.moveTo(X(s), y); st = true; } else g.lineTo(X(s), y); }
+  g.stroke();
+  // erkannter Start und Ende der Dehnung
+  g.font = '600 11px system-ui'; g.textBaseline = 'alphabetic';
+  g.strokeStyle = col('--ink'); g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(t.tOn), top - 4); g.lineTo(X(t.tOn), yb); g.stroke();
+  g.fillStyle = col('--ink'); g.textAlign = 'left'; g.fillText('Start', X(t.tOn) + 3, top - 6);
+  if (t.slowDur >= 0.3) {
+    g.strokeStyle = col('--muted'); g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(t.tSlowEnd), top - 4); g.lineTo(X(t.tSlowEnd), yb); g.stroke(); g.setLineDash([]);
+    g.fillStyle = col('--muted'); g.textAlign = 'right'; g.fillText('Ende Dehnung', X(t.tSlowEnd) - 3, top - 6);
+  }
+  const airBad = j.items.some((i) => i.key === 'airstart' && !i.ok);
+  if (airBad && t.tAir != null && t.tVoice > t.tAir) { g.fillStyle = 'rgba(234,138,40,.28)'; g.fillRect(X(t.tAir), top, X(t.tVoice) - X(t.tAir), yb - top); g.fillStyle = col('--bad'); g.textAlign = 'center'; g.fillText('Luft', (X(t.tAir) + X(t.tVoice)) / 2, yb - 6); }
+  if (markT != null) {                                               // genaue Stelle des Fehlers
+    const xm = X(markT); g.strokeStyle = 'rgba(234,138,40,.95)'; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(xm, top); g.lineTo(xm, yb + 4); g.stroke(); g.setLineDash([]);
+  }
+  if (ch && ch.length) {                                             // Laut-/Silbenzeile
+    const y0 = yb + 6, hh = 22; g.textAlign = 'center'; g.textBaseline = 'middle';
+    let xPrev = -Infinity;
+    ch.forEach((c, i) => {
+      g.font = '600 13px system-ui'; const need = g.measureText(c.label).width + 8;
+      const a = Math.max(X(clamp(c.t0, tMin, tMax)) + 1, xPrev + 2), b = Math.max(X(clamp(c.t1, tMin, tMax)) - 1, a + need); xPrev = b;
+      const hit = marks && marks.has(i);
+      g.fillStyle = hit ? 'rgba(234,138,40,.55)' : col('--line'); g.beginPath(); g.roundRect ? g.roundRect(a, y0, b - a, hh, 5) : g.rect(a, y0, b - a, hh); g.fill();
+      g.fillStyle = col('--ink'); if (g.measureText(c.label).width < b - a - 2) g.fillText(c.label, (a + b) / 2, y0 + hh / 2 + 1);
+    });
+    g.textBaseline = 'alphabetic';
+  }
+  g.fillStyle = col('--muted'); g.font = '11px system-ui'; g.textAlign = 'center';
+  for (let s = 0; s <= tMax + 1e-6; s += 1) { g.textAlign = s === 0 ? 'left' : 'center'; g.fillText(s + ' s', X(s), H - 6); }
+}
+window.addEventListener('resize', () => { if (lastResult && !$('screenFb').hidden) drawPlot(lastResult.t, lastResult.j, lastResult.word, lastResult.ch, lastResult.j.pass ? new Set() : lastResult.marks, lastResult.markT); });
+
+// ---------- Testmodus: eigene Aufnahmen markieren und prüfen, wie oft die Seite richtig liegt ----------
+let testItems = [];
+function decodeToMono(arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext, ctx = new Ctx(1, 1, ANALYSIS_SR);
+    const done = (buf) => { const out = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c++) { const ch = buf.getChannelData(c); for (let i = 0; i < out.length; i++) out[i] += ch[i] / buf.numberOfChannels; }
+      resolve(out); };
+    const p = ctx.decodeAudioData(arrayBuffer, done, reject); if (p && p.catch) p.catch(reject);
+  });
+}
+const guessWord = (name) => (name.replace(/\.[^.]+$/, '').match(/[A-Za-zÄÖÜäöüß|]+/g) || [''])[0];
+function renderTest() {
+  const box = $('testList'); box.textContent = '';
+  testItems.forEach((it) => {
+    const d = document.createElement('div'); d.className = 'titem';
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.file.name;
+    const inp = document.createElement('input'); inp.type = 'text'; inp.value = it.word; inp.placeholder = 'Wort, z. B. Ber|lin'; inp.addEventListener('input', () => { it.word = inp.value.trim(); });
+    const seg = document.createElement('div'); seg.className = 'seg2';
+    [['korrekt', 'k'], ['fehlerhaft', 'f']].forEach(([lab, cls]) => { const b = document.createElement('button'); b.textContent = lab; b.className = cls + (it.label === lab ? ' on' : ''); b.addEventListener('click', () => { it.label = lab; renderTest(); }); seg.append(b); });
+    const res = document.createElement('div'); res.className = 'res'; res.textContent = it.result || '';
+    d.append(nm, inp, seg, res); box.append(d);
+  });
+}
+$('openTest').addEventListener('click', () => { show('screenTest'); renderTest(); });
+$('testBack').addEventListener('click', () => show('screenSet'));
+$('testFiles').addEventListener('change', (e) => { for (const f of Array.from(e.target.files)) testItems.push({ file: f, word: guessWord(f.name), label: null, result: '' }); e.target.value = ''; renderTest(); });
+$('testRun').addEventListener('click', async () => {
+  let n = 0, hit = 0, kTot = 0, kHit = 0, fTot = 0, fHit = 0; $('testSummary').textContent = 'Werte aus …';
+  for (const it of testItems) {
+    if (!it.word) { it.result = 'Bitte das Wort eintragen.'; continue; }
+    try {
+      const w = parseWords(it.word)[0], { t, j } = evaluateRecording(await decodeToMono(await it.file.arrayBuffer()), w);
+      const lv = j.level || (j.pass ? 'gut' : 'nochmal'), bad = j.items.filter((i) => !i.ok);
+      let mark = '';
+      if (it.label) { n++; const ok = it.label === 'korrekt' ? lv === 'gut' : lv !== 'gut'; if (ok) hit++; if (it.label === 'korrekt') { kTot++; if (ok) kHit++; } else { fTot++; if (ok) fHit++; } mark = ok ? '✓ richtig erkannt · ' : '✗ falsch erkannt · '; }
+      it.result = `${mark}Seite: ${LEVEL_TEXT[lv]}${bad[0] ? ' (' + (TITLES[bad[0].key] || '') + ')' : ''} · ${valuesText(t, j)}`;
+    } catch (err) { console.warn(err); it.result = 'Datei konnte nicht gelesen werden.'; }
+    renderTest(); await new Promise((r) => setTimeout(r, 0));
+  }
+  $('testSummary').textContent = n ? `Richtig erkannt: ${hit} von ${n} · korrekte als „gut“: ${kHit} von ${kTot} · fehlerhafte als „nicht gut“: ${fHit} von ${fTot}` : 'Markiere die Aufnahmen als korrekt oder fehlerhaft.';
+});
+
+// ---------- Übungsprotokoll: jeder Versuch lokal im Browser (IndexedDB), nichts verlässt das Gerät ----------
+let dbP = null, lastSave = null, curLogId = null;
+function db() {
+  if (!dbP) dbP = new Promise((res, rej) => {
+    const r = indexedDB.open('dehnuebung', 1);
+    r.onupgradeneeded = () => { const s = r.result.createObjectStore('tries', { keyPath: 'id', autoIncrement: true }); s.createIndex('ts', 'ts'); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  return dbP;
+}
+async function tx(mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => { const t = d.transaction('tries', mode), st = t.objectStore('tries'); let out; const q = fn(st); if (q) q.onsuccess = () => { out = q.result; }; t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
+}
+const logAll = () => tx('readonly', (s) => s.getAll());
+const logGet = (id) => tx('readonly', (s) => s.get(id));
+const logPut = (rec) => tx('readwrite', (s) => s.put(rec));
+const logDel = (id) => tx('readwrite', (s) => s.delete(id));
+
+// WAV (16 Bit, mono) aus Float-Samples
+function wavBytes(x, sr) {
+  let pk = 0; for (let i = 0; i < x.length; i++) pk = Math.max(pk, Math.abs(x[i]));
+  const g = pk > 1e-4 ? 0.9 / pk : 1, n = x.length, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(clamp(x[i] * g, -1, 1) * 32767), true);
+  return b;
+}
+function logSave(res, word) {
+  const { t, j } = res, bad = j.items.filter((i) => !i.ok), p = (t.valid && t.profile) || {};
+  const rec = {
+    ts: Date.now(), word: word.parts.join('|'), level: j.level || (j.pass ? 'gut' : 'nochmal'),
+    hint: bad[0] ? TITLES[bad[0].key] || '' : '', text: bad.map((i) => i.text).join(' | '),
+    values: t.valid ? { start: t.tOn, slow: t.slowDur, rise: t.rise, air: t.airDur, startRel: p.startRel, endRel: p.endRel, slope: p.slope } : null,
+    airCheck: !!j.airCheck, strict: $('strictness').value, forTherapist: false, wav: wavBytes(res.audio, ANALYSIS_SR),
+  };
+  curLogId = null; $('markTher').disabled = true;
+  lastSave = tx('readwrite', (s) => s.add(rec)).then(async (id) => {
+    curLogId = id; $('markTher').disabled = false;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* egal */ }
+    const keep = SETTINGS.LOG_KEEP_UNMARKED;                          // alte, nicht markierte Versuche aufräumen
+    if (keep != null) { const all = (await logAll()).filter((r) => !r.forTherapist); for (const r of all.slice(0, Math.max(0, all.length - keep))) await logDel(r.id); }
+    return id;
+  }).catch((e) => { console.warn(e); showBanner('Versuch konnte nicht gespeichert werden (Speicher voll oder gesperrt).'); });
+}
+function logMarkReset() { const b = $('markTher'); b.classList.remove('on'); b.textContent = '☆ Für Logopäde'; }
+$('markTher').addEventListener('click', async () => {
+  if (curLogId == null) return; const r = await logGet(curLogId); if (!r) return;
+  r.forTherapist = !r.forTherapist; await logPut(r);
+  const b = $('markTher'); b.classList.toggle('on', r.forTherapist); b.textContent = r.forTherapist ? '★ Für Logopäde' : '☆ Für Logopäde';
+});
+
+// Liste
+const two = (n) => String(n).padStart(2, '0');
+const dStr = (ts) => { const d = new Date(ts); return `${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()}`; };
+const tStr = (ts) => { const d = new Date(ts); return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`; };
+const valsShort = (r) => r.values ? `Start ${fmt(r.values.start, 2)} s · Dehnung ${fmt(r.values.slow, 2)} s · Anstieg ${Math.round(r.values.rise * 1000)} ms` + (r.airCheck && r.values.air != null ? ` · Luft ${fmt(r.values.air, 2)} s` : '') : 'keine auswertbare Stimme';
+let player = null;
+function play(r) {
+  if (player) { player.pause(); URL.revokeObjectURL(player.src); }
+  player = new Audio(URL.createObjectURL(new Blob([r.wav], { type: 'audio/wav' }))); player.play().catch((e) => showBanner('Abspielen nicht möglich: ' + e.message));
+}
+async function renderLog() {
+  const all = (await logAll()).reverse(), marked = all.filter((r) => r.forTherapist), only = $('logOnlyMarked').checked, list = only ? marked : all;
+  $('logInfo').textContent = `${all.length} Versuche gespeichert, ${marked.length} für Logopäde markiert. Alles bleibt nur auf diesem Gerät.`;
+  $('zipMake').disabled = !marked.length; $('zipMake').textContent = `Markierte als ZIP exportieren (${marked.length})`;
+  const box = $('logList'); box.textContent = '';
+  if (!list.length) { box.textContent = only ? 'Noch nichts markiert.' : 'Noch keine Versuche.'; return; }
+  for (const r of list.slice(0, 300)) {
+    const d = document.createElement('div'); d.className = 'logitem';
+    const pb = document.createElement('button'); pb.className = 'ib'; pb.textContent = '▶'; pb.setAttribute('aria-label', 'Abspielen'); pb.addEventListener('click', () => play(r));
+    const info = document.createElement('div'); info.className = 'info';
+    const l1 = document.createElement('div'); l1.className = 'l1'; l1.textContent = r.word.replace(/\|/g, '·');
+    const lv = document.createElement('span'); lv.className = 'lv ' + r.level; lv.textContent = LEVEL_TEXT[r.level] + (r.hint ? ' – ' + r.hint : ''); l1.append(lv);
+    const l2 = document.createElement('div'); l2.className = 'l2'; l2.textContent = `${dStr(r.ts)} ${tStr(r.ts).slice(0, 5)} · ${valsShort(r)}`;
+    info.append(l1, l2);
+    const mb = document.createElement('button'); mb.className = 'ib' + (r.forTherapist ? ' on' : ''); mb.textContent = r.forTherapist ? '★' : '☆'; mb.setAttribute('aria-label', 'Für Logopäde');
+    mb.addEventListener('click', async () => { r.forTherapist = !r.forTherapist; await logPut(r); renderLog(); });
+    const db2 = document.createElement('button'); db2.className = 'ib'; db2.textContent = '✕'; db2.setAttribute('aria-label', 'Löschen');
+    db2.addEventListener('click', async () => { if (confirm('Diesen Versuch löschen?')) { await logDel(r.id); renderLog(); } });
+    d.append(pb, info, mb, db2); box.append(d);
+  }
+  if (list.length > 300) { const m = document.createElement('div'); m.className = 'small'; m.textContent = `… und ${list.length - 300} ältere`; box.append(m); }
+}
+$('openLog').addEventListener('click', () => { show('screenLog'); $('zipOut').hidden = true; renderLog(); });
+$('logBack').addEventListener('click', () => show('screenSet'));
+$('logOnlyMarked').addEventListener('change', renderLog);
+
+// ZIP (ohne Kompression, Audio lässt sich ohnehin kaum packen) mit CRC32
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = (u8) => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function makeZip(files) {   // files: [{ name, data: Uint8Array, date: Date }]
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  for (const f of files) {
+    const nm = enc.encode(f.name), d = f.date, crc = crc32(f.data);
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, time, true); h.setUint16(12, date, true);
+    h.setUint32(14, crc, true); h.setUint32(18, f.data.length, true); h.setUint32(22, f.data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+    parts.push(new Uint8Array(h.buffer), nm, f.data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, time, true); c.setUint16(14, date, true);
+    c.setUint32(16, crc, true); c.setUint32(20, f.data.length, true); c.setUint32(24, f.data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    cen.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + f.data.length;
+  }
+  const cenSize = cen.reduce((n, a) => n + a.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cenSize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...cen, new Uint8Array(e.buffer)], { type: 'application/zip' });
+}
+const num = (v, d) => (v == null || !isFinite(v) ? '' : v.toFixed(d).replace('.', ','));
+const csvCell = (v) => { const s = String(v == null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const fileSafe = (s) => s.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/[^A-Za-z0-9_-]/g, '');
+let zipUrl = null, zipFile = null;
+$('zipMake').addEventListener('click', async () => {
+  const marked = (await logAll()).filter((r) => r.forTherapist); if (!marked.length) return;
+  const rows = [['Nr', 'Datei', 'Datum', 'Uhrzeit', 'Wort', 'Ergebnis', 'Hinweis', 'Alle Hinweise', 'Start (s)', 'Dehnung erster Laut (s)', 'Anstiegszeit (ms)',
+    'Luft vor der Stimme (s)', 'Luft-Check', 'Lautstärke Anfang ggü. Mitte (dB)', 'Lautstärke Ende ggü. Mitte (dB)', 'Lautstärke-Anstieg (dB/s)', 'Strenge']];
+  const files = [];
+  marked.forEach((r, k) => {
+    const d = new Date(r.ts), name = `${String(k + 1).padStart(3, '0')}_${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}_${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}_${fileSafe(r.word.replace(/\|/g, ''))}.wav`;
+    files.push({ name: 'aufnahmen/' + name, data: new Uint8Array(r.wav), date: d });
+    const v = r.values || {};
+    rows.push([k + 1, name, dStr(r.ts), tStr(r.ts), r.word.replace(/\|/g, ''), LEVEL_TEXT[r.level].replace(' ✓', ''), r.hint, r.text, num(v.start, 2), num(v.slow, 2), v.rise == null ? '' : Math.round(v.rise * 1000),
+      num(v.air, 2), r.airCheck ? 'an' : 'aus', num(v.startRel, 1), num(v.endRel, 1), num(v.slope, 1), r.strict || '']);
+  });
+  const csv = '﻿' + rows.map((row) => row.map(csvCell).join(';')).join('\r\n') + '\r\n', now = new Date();
+  files.push({ name: 'versuche.csv', data: new TextEncoder().encode(csv), date: now });
+  const zname = `Dehnuebung_Logopaede_${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}.zip`, blob = makeZip(files);
+  if (zipUrl) URL.revokeObjectURL(zipUrl); zipUrl = URL.createObjectURL(blob);
+  const a = $('zipLink'); a.href = zipUrl; a.download = zname;
+  zipFile = null; try { const f = new File([blob], zname, { type: 'application/zip' }); if (navigator.canShare && navigator.canShare({ files: [f] })) zipFile = f; } catch (e) { zipFile = null; }
+  $('zipShare').hidden = !zipFile; $('zipOut').hidden = false;
+  $('zipInfo').textContent = `${marked.length} Aufnahmen + versuche.csv · ${(blob.size / 1048576).toFixed(1).replace('.', ',')} MB`;
+});
+$('zipShare').addEventListener('click', () => { if (zipFile) navigator.share({ files: [zipFile], title: 'Dehnübung – Aufnahmen für Logopäde' }).catch(() => { /* abgebrochen */ }); });
+
+
+// ---------- Einstellungen ----------
+$('gear').addEventListener('click', () => { $('wordsText').value = store.get('dehn_words', WORDS_DEFAULT); show('screenSet'); });
+$('back').addEventListener('click', () => show('screenMain'));
+$('saveWords').addEventListener('click', () => { store.set('dehn_words', $('wordsText').value); loadWords(); deck = []; nextWord(); });
+$('resetWords').addEventListener('click', () => { store.set('dehn_words', WORDS_DEFAULT); $('wordsText').value = WORDS_DEFAULT; loadWords(); deck = []; });
+$('shuffle').addEventListener('change', () => { deck = []; });
+$('strictness').value = store.get('dehn_strict', 'streng'); applyStrictness($('strictness').value);
+$('strictness').addEventListener('change', () => { store.set('dehn_strict', $('strictness').value); applyStrictness($('strictness').value); });
+loadWords(); nextWord(); setRecUI('idle');
+window.__app = { cur: () => cur, last: () => lastResult, words: () => words, logAll: () => logAll(), lastSave: () => lastSave };   // nur zum Testen
+</script>
+</body>
+</html>
